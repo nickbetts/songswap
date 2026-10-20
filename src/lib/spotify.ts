@@ -164,12 +164,33 @@ export async function getPlayback(): Promise<Playback | null> {
   };
 }
 
+/** Picks a usable device when Spotify reports no active one (e.g. the desktop app is open but idle). */
+async function pickDeviceId(): Promise<string | null> {
+  const j = await api("/me/player/devices");
+  const devices = ((j?.devices ?? []) as { id: string | null; is_active: boolean; is_restricted: boolean; type: string }[])
+    .filter((d) => d.id && !d.is_restricted);
+  const d = devices.find((x) => x.is_active) ?? devices.find((x) => x.type === "Computer") ?? devices[0];
+  return d?.id ?? null;
+}
+
+/** Runs a player command; on "no active device" retries targeting an available device, which also wakes it up. */
+async function player(path: string, init: RequestInit & { json?: unknown }) {
+  try {
+    return await api(path, init);
+  } catch (e) {
+    if (!(e instanceof SpotifyError) || e.status !== 404) throw e;
+    const id = await pickDeviceId();
+    if (!id) throw e;
+    const sep = path.includes("?") ? "&" : "?";
+    return api(`${path}${sep}device_id=${encodeURIComponent(id)}`, init);
+  }
+}
+
 export const addToSpotifyQueue = (uri: string) =>
-  api(`/me/player/queue?${new URLSearchParams({ uri })}`, { method: "POST" });
+  player(`/me/player/queue?${new URLSearchParams({ uri })}`, { method: "POST" });
 
-export const playUris = (uris: string[]) =>
-  api("/me/player/play", { method: "PUT", json: { uris } });
+export const playUris = (uris: string[]) => player("/me/player/play", { method: "PUT", json: { uris } });
 
-export const pause = () => api("/me/player/pause", { method: "PUT" });
-export const resume = () => api("/me/player/play", { method: "PUT" });
-export const skipNext = () => api("/me/player/next", { method: "POST" });
+export const pause = () => player("/me/player/pause", { method: "PUT" });
+export const resume = () => player("/me/player/play", { method: "PUT" });
+export const skipNext = () => player("/me/player/next", { method: "POST" });

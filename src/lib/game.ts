@@ -136,9 +136,16 @@ export async function playNow(entryId: string) {
 }
 
 export async function playerControl(action: "pause" | "resume" | "skip") {
-  if (action === "pause") await sp.pause();
-  else if (action === "resume") await sp.resume();
-  else await sp.skipNext();
+  try {
+    if (action === "pause") await sp.pause();
+    else if (action === "resume") await sp.resume();
+    else await sp.skipNext();
+  } catch (e) {
+    if (e instanceof sp.SpotifyError && e.status === 403) {
+      throw new GameError(409, `Spotify refused to ${action} right now (already ${action === "resume" ? "playing" : "paused"}, or an ad is playing).`);
+    }
+    throw e;
+  }
   await forceSync();
 }
 
@@ -219,7 +226,7 @@ export async function sync() {
         } catch (e) {
           s.error =
             e instanceof sp.SpotifyError && e.status === 404
-              ? "No active Spotify device. Open Spotify on a device and press play once."
+              ? "No Spotify device found. Make sure the Spotify app is open and logged in (and Private Session is off)."
               : e instanceof Error
                 ? e.message
                 : "Spotify error";
