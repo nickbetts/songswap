@@ -180,6 +180,7 @@ export async function sync() {
     const now = Date.now();
     s.playback = pb;
     s.playbackAt = now;
+    s.error = null;
 
     const retire = () => {
       if (s.nowPlaying) {
@@ -192,7 +193,7 @@ export async function sync() {
     if (pb?.trackId) {
       if (s.nowPlaying?.track.id !== pb.trackId) {
         retire();
-        const idx = s.queue.findIndex((e) => e.handedOffAt && e.track.id === pb!.trackId);
+        const idx = s.queue.findIndex((e) => e.track.id === pb!.trackId);
         if (idx >= 0) {
           const [e] = s.queue.splice(idx, 1);
           e.startedAt = now;
