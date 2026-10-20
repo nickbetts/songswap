@@ -5,6 +5,8 @@ import type { Track } from "./spotify";
 const STATE_KEY = "ss:state";
 const HANDOFF_REMAINING_MS = 25_000;
 const MAX_HISTORY = 200;
+const STALL_MS = 60_000;
+const TAKEOVER_GRACE_MS = 15_000;
 
 export interface Person {
   id: string;
@@ -27,6 +29,8 @@ interface GameState {
   history: Entry[];
   playback: sp.Playback | null;
   playbackAt: number;
+  pausedSince?: number | null;
+  adminPaused?: boolean;
   error: string | null;
 }
 
@@ -123,6 +127,7 @@ export async function playNow(entryId: string) {
     const e = s.queue.find((x) => x.id === entryId);
     if (!e) throw new GameError(404, "Not in the queue");
     await sp.playUris([e.track.uri]);
+    s.adminPaused = false;
     e.handedOffAt = Date.now();
     // Keep it first so it is matched as the now-playing track.
     s.queue = [e, ...s.queue.filter((x) => x.id !== entryId)];
@@ -133,6 +138,11 @@ export async function playNow(entryId: string) {
 }
 
 export async function playerControl(action: "pause" | "resume" | "skip") {
+  await withLock("state", async () => {
+    const st = await load();
+    st.adminPaused = action === "pause";
+    await save(st);
+  });
   try {
     if (action === "pause") await sp.pause();
     else if (action === "resume") await sp.resume();
@@ -201,34 +211,39 @@ export async function sync() {
       retire();
     }
 
+    if (pb?.isPlaying) s.pausedSince = null;
+    else s.pausedSince ??= now;
+    if (pb?.isPlaying) s.adminPaused = false;
+
     const head = s.queue[0];
     if (head) {
-      const idleOrEnded =
-        !pb || (!pb.isPlaying && (pb.progressMs === 0 || pb.progressMs >= pb.durationMs - 3000));
+      const ended = !pb || (!pb.isPlaying && (pb.progressMs === 0 || pb.progressMs >= pb.durationMs - 3000));
+      const stalled = !pb?.isPlaying && now - (s.pausedSince ?? now) > STALL_MS;
 
-      if (head.handedOffAt && !pb?.isPlaying && now - head.handedOffAt > 30_000) {
-        head.handedOffAt = undefined;
-      }
+      // Something that isn't ours is playing (or nothing is), or our song ended / the player stalled:
+      // take over and play the next song straight away.
+      const foreign = !s.nowPlaying;
+      const headPending = !!head.handedOffAt && now - head.handedOffAt <= TAKEOVER_GRACE_MS;
+      const takeover =
+        !s.adminPaused && ((foreign && !headPending) || (!!s.nowPlaying && !pb?.isPlaying && (ended || stalled)));
 
-      if (!head.handedOffAt) {
-        try {
-          if (pb?.isPlaying && pb.durationMs - pb.progressMs < HANDOFF_REMAINING_MS) {
-            await sp.addToSpotifyQueue(head.track.uri);
-            head.handedOffAt = now;
-            s.error = null;
-          } else if (idleOrEnded) {
-            await sp.playUris([head.track.uri]);
-            head.handedOffAt = now;
-            s.error = null;
-          }
-        } catch (e) {
-          s.error =
-            e instanceof sp.SpotifyError && e.status === 404
-              ? "No Spotify device found. Make sure the Spotify app is open and logged in (and Private Session is off)."
-              : e instanceof Error
-                ? e.message
-                : "Spotify error";
+      try {
+        if (takeover) {
+          await sp.playUris([head.track.uri]);
+          retire();
+          head.handedOffAt = now;
+          s.pausedSince = null;
+        } else if (!head.handedOffAt && pb?.isPlaying && pb.durationMs - pb.progressMs < HANDOFF_REMAINING_MS) {
+          await sp.addToSpotifyQueue(head.track.uri);
+          head.handedOffAt = now;
         }
+      } catch (e) {
+        s.error =
+          e instanceof sp.SpotifyError && e.status === 404
+            ? "No Spotify device found. Make sure the Spotify app is open and logged in (and Private Session is off)."
+            : e instanceof Error
+              ? e.message
+              : "Spotify error";
       }
     }
     await save(s);
