@@ -7,6 +7,7 @@ const HANDOFF_REMAINING_MS = 25_000;
 const MAX_HISTORY = 200;
 const STALL_MS = 60_000;
 const TAKEOVER_GRACE_MS = 15_000;
+export const SKIP_VOTES_NEEDED = 5;
 
 export interface Person {
   id: string;
@@ -21,6 +22,8 @@ export interface Entry {
   handedOffAt?: number;
   startedAt?: number;
   ratings: Record<string, { name: string; score: number }>;
+  skipVotes?: Record<string, string>;
+  skippedAt?: number;
 }
 
 interface GameState {
@@ -106,6 +109,43 @@ export async function rateSong(person: Person, entryId: string, score: number) {
     np.ratings[person.id] = { name: person.name, score };
     await save(s);
   });
+}
+
+/** Toggles a person's vote to skip the current song; skips it once enough people agree. */
+export async function voteSkip(person: Person, entryId: string, vote: boolean) {
+  let skipped = false;
+  await withLock("state", async () => {
+    const s = await load();
+    const np = s.nowPlaying;
+    if (!np || np.id !== entryId) throw new GameError(409, "That song is no longer playing");
+    if (np.skippedAt) throw new GameError(409, "Already skipping this one");
+    np.skipVotes ??= {};
+    if (vote) np.skipVotes[person.id] = person.name;
+    else delete np.skipVotes[person.id];
+
+    if (Object.keys(np.skipVotes).length >= SKIP_VOTES_NEEDED) {
+      // Jump straight to our next song if Spotify doesn't already have it queued.
+      const head = s.queue[0];
+      try {
+        if (head && !head.handedOffAt) {
+          await sp.playUris([head.track.uri]);
+          head.handedOffAt = Date.now();
+        } else {
+          await sp.skipNext();
+        }
+      } catch (e) {
+        await save(s);
+        throw new GameError(502, `Enough votes, but Spotify wouldn't skip: ${e instanceof Error ? e.message : "error"}`);
+      }
+      np.skippedAt = Date.now();
+      s.adminPaused = false;
+      s.error = null;
+      skipped = true;
+    }
+    await save(s);
+  });
+  if (skipped) await forceSync();
+  return { skipped };
 }
 
 export async function removeEntry(entryId: string) {
@@ -289,6 +329,7 @@ function publicEntry(e: Entry, userId: string | null, showRatings: boolean) {
     myScore: userId ? (e.ratings[userId]?.score ?? null) : null,
     ratings: showRatings ? Object.values(e.ratings).map((r) => ({ name: r.name, score: r.score })) : undefined,
     handedOff: !!e.handedOffAt,
+    skipped: !!e.skippedAt,
   };
 }
 
@@ -327,6 +368,12 @@ export async function publicState(userId: string | null, admin: boolean) {
           progressMs: pb?.progressMs ?? 0,
           ageMs: pb?.isPlaying ? Date.now() - s.playbackAt : 0,
           canRate: !!userId && np.addedBy.id !== userId,
+          skip: {
+            needed: SKIP_VOTES_NEEDED,
+            voters: Object.values(np.skipVotes ?? {}),
+            mine: !!userId && !!np.skipVotes?.[userId],
+            pending: !!np.skippedAt,
+          },
         }
       : null,
     queue: s.queue.map((e) => publicEntry(e, userId, false)),

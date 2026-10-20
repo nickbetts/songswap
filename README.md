@@ -6,6 +6,7 @@ Guests open your link, pick a name, add songs to a shared queue, and rate whatev
 
 - **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify**. Controls: play/pause/skip, "play now", drag to reorder or remove queued songs, reset the session. The host page also lets you add songs and vote as "Nick".
 - **Guests** (`/`): search Spotify and add as many songs as you like. Rate other people's songs 1–10 (you can't rate your own); voting is open, and votes can be changed, until the song finishes.
+- **Vote to skip**: anyone can vote to skip the current song (tap again to take it back). At 5 votes it skips straight to the next queued song; skipped songs are marked in the Played list.
 - The app keeps its own queue and feeds the next song into Spotify's queue ~25s before the current one ends (or starts it if the player is idle). This runs whenever anyone has the page open, so keep the host page or a guest tab open during the session.
 - Leaderboard ranks people by the average rating of their songs.
 

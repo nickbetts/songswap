@@ -22,6 +22,7 @@ export interface PublicEntry {
   myScore: number | null;
   ratings?: { name: string; score: number }[];
   handedOff: boolean;
+  skipped?: boolean;
 }
 
 export interface NowPlaying extends PublicEntry {
@@ -29,6 +30,7 @@ export interface NowPlaying extends PublicEntry {
   progressMs: number;
   ageMs: number;
   canRate: boolean;
+  skip: { needed: number; voters: string[]; mine: boolean; pending: boolean };
 }
 
 export interface AppState {

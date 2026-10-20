@@ -15,6 +15,7 @@ import {
   Music2,
   Plus,
   Search,
+  SkipForward,
   Sparkles,
   Trophy,
   X,
@@ -192,6 +193,7 @@ export function NowPlayingHero({
             </span>
           </div>
         ) : null}
+        <SkipVote np={np} user={user} onChange={onChange} />
         {controls}
       </div>
 
@@ -262,6 +264,67 @@ function RatingPad({
           </motion.button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SkipVote({ np, user, onChange }: { np: NowPlaying; user: User | null; onChange: () => void }) {
+  const [pending, setPending] = useState<boolean | null>(null);
+  useEffect(() => setPending(null), [np.id]);
+
+  const { needed, voters, mine: serverMine, pending: skipping } = np.skip;
+  const mine = pending ?? serverMine;
+  const count = Math.min(needed, voters.length + (mine === serverMine ? 0 : mine ? 1 : -1));
+  const left = needed - count;
+
+  async function toggle() {
+    if (!user || skipping) return;
+    const next = !mine;
+    setPending(next);
+    try {
+      const r = await postJSON("/api/skip", { user, entryId: np.id, vote: next });
+      if (r.skipped) toast("Skipped by popular vote 👋", { description: np.track.name });
+      onChange();
+    } catch (e) {
+      setPending(null);
+      toast.error(e instanceof Error ? e.message : "Could not vote");
+      onChange();
+    }
+  }
+
+  return (
+    <div className={`skipvote ${mine ? "on" : ""} ${skipping ? "going" : ""}`}>
+      <motion.button
+        className="skip-btn"
+        whileTap={{ scale: 0.95 }}
+        onClick={toggle}
+        disabled={!user || skipping}
+        title={mine ? "Tap to take back your vote" : `${needed} votes skips this song`}
+        aria-pressed={mine}
+      >
+        <SkipForward size={15} fill={mine ? "currentColor" : "none"} />
+        {skipping ? "Skipping…" : mine ? "Voted to skip" : "Vote to skip"}
+      </motion.button>
+      <div className="skip-meter" aria-label={`${count} of ${needed} skip votes`}>
+        {Array.from({ length: needed }, (_, i) => (
+          <motion.span
+            key={i}
+            className={`pip ${i < count ? "on" : ""}`}
+            animate={{ scale: i < count ? 1 : 0.85 }}
+            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+          />
+        ))}
+      </div>
+      <span className="skip-text">
+        {skipping ? "Next song coming up" : count === 0 ? `${needed} votes skips it` : `${left} more to skip`}
+      </span>
+      {voters.length > 0 && (
+        <span className="skip-voters" title={voters.join(", ")}>
+          {voters.slice(0, 5).map((n, i) => (
+            <Avatar key={n + i} name={n} size={22} />
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -855,7 +918,10 @@ export function History({ items, userId }: { items: PublicEntry[]; userId: strin
         <li key={e.id} className="hrow">
           <Art src={e.track.image} size={44} />
           <div className="grow">
-            <div className="title">{e.track.name}</div>
+            <div className="title">
+              {e.track.name}
+              {e.skipped && <span className="tag skipped">Skipped</span>}
+            </div>
             <div className="sub">
               {e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}
             </div>
