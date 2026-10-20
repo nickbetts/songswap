@@ -17,7 +17,7 @@ Guests open your link, pick a name, add **one song at a time** to a shared queue
 
    While the app is in development mode, add your Spotify account under *User Management*. Playback control requires **Spotify Premium** on the host account.
 2. **Vercel**:
-   - Import the project, then add a Redis store from the Marketplace (**Upstash Redis**). This sets `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_*`) automatically. Redis is required so state is shared across serverless invocations.
+   - Import the project, then add a **Neon** Postgres database from the Marketplace (Storage tab; free tier is fine). This sets `DATABASE_URL` automatically. A database is required so state is shared across serverless invocations; the app creates its own `kv` table on first use.
    - Set env vars: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `ADMIN_PASSWORD`, `SESSION_SECRET` (see [.env.example](.env.example)).
    - Deploy.
 3. Visit `/admin`, sign in, connect Spotify, and open Spotify on a device (start any song once so there's an active device). Share the main link.
@@ -25,7 +25,7 @@ Guests open your link, pick a name, add **one song at a time** to a shared queue
 ## Local development
 
 ```bash
-cp .env.example .env.local   # fill in values; Redis optional (falls back to memory)
+cp .env.example .env.local   # fill in values; DATABASE_URL optional (falls back to memory)
 npm install
 npm run dev -- -H 127.0.0.1
 ```

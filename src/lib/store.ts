@@ -1,4 +1,4 @@
-import { Redis } from "@upstash/redis";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
 export interface KV {
   get<T>(key: string): Promise<T | null>;
@@ -38,21 +38,48 @@ class MemoryKV implements KV {
   }
 }
 
-class UpstashKV implements KV {
-  constructor(private redis: Redis) {}
+class NeonKV implements KV {
+  private sql: NeonQueryFunction<false, false>;
+  private ready: Promise<unknown> | null = null;
+
+  constructor(url: string) {
+    this.sql = neon(url);
+  }
+
+  private init() {
+    this.ready ??= this.sql`CREATE TABLE IF NOT EXISTS kv (
+      key text PRIMARY KEY,
+      value jsonb NOT NULL,
+      expires_at timestamptz
+    )`.catch((e) => {
+      this.ready = null;
+      throw e;
+    });
+    return this.ready;
+  }
 
   async get<T>(key: string) {
-    return (await this.redis.get<T>(key)) ?? null;
+    await this.init();
+    const rows = await this.sql`SELECT value FROM kv WHERE key = ${key} AND (expires_at IS NULL OR expires_at > now())`;
+    return rows.length ? (rows[0].value as T) : null;
   }
   async set(key: string, value: unknown) {
-    await this.redis.set(key, value);
+    await this.init();
+    await this.sql`INSERT INTO kv (key, value, expires_at) VALUES (${key}, ${JSON.stringify(value)}::jsonb, NULL)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, expires_at = NULL`;
   }
   async del(key: string) {
-    await this.redis.del(key);
+    await this.init();
+    await this.sql`DELETE FROM kv WHERE key = ${key}`;
   }
   async setNX(key: string, value: string, ttlMs: number) {
-    const res = await this.redis.set(key, value, { nx: true, px: ttlMs });
-    return res === "OK";
+    await this.init();
+    const rows = await this.sql`INSERT INTO kv (key, value, expires_at)
+      VALUES (${key}, ${JSON.stringify(value)}::jsonb, now() + (${ttlMs} * interval '1 millisecond'))
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+        WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()
+      RETURNING key`;
+    return rows.length > 0;
   }
 }
 
@@ -60,13 +87,12 @@ const g = globalThis as unknown as { __songswapKV?: KV };
 
 export function getKV(): KV {
   if (g.__songswapKV) return g.__songswapKV;
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (url && token) {
-    g.__songswapKV = new UpstashKV(new Redis({ url, token }));
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (url) {
+    g.__songswapKV = new NeonKV(url);
   } else {
     if (process.env.VERCEL) {
-      console.warn("No Redis configured on Vercel; state will not persist across invocations.");
+      console.warn("No database configured on Vercel (set DATABASE_URL); state will not persist across invocations.");
     }
     g.__songswapKV = new MemoryKV();
   }
