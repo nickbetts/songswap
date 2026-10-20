@@ -1,295 +1,996 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, Reorder, motion, useDragControls } from "motion/react";
+import { toast } from "sonner";
 import {
+  Check,
+  Clock,
+  Crown,
+  Disc3,
+  GripVertical,
+  History as HistoryIcon,
+  ListMusic,
+  Lock,
+  Music2,
+  Plus,
+  Search,
+  Sparkles,
+  Trophy,
+  X,
+} from "lucide-react";
+import {
+  AppState,
   NowPlaying,
   PublicEntry,
-  AppState,
+  SCORE_LABELS,
   TrackInfo,
   User,
+  fmtDuration,
   fmtTime,
+  heat,
   postJSON,
   useProgress,
 } from "./hooks";
+import { Art, Avatar, Equalizer, Kbd, ScoreBadge, ScoreRing, Spinner } from "./ui";
 
-export function Art({ src, size = 48 }: { src: string | null; size?: number }) {
-  return src ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className="art" src={src} width={size} height={size} alt="" />
-  ) : (
-    <div className="art placeholder" style={{ width: size, height: size }} />
-  );
+export { Art } from "./ui";
+
+async function burst(el: Element | null, opts: { count?: number; spread?: number; colors?: string[] } = {}) {
+  const confetti = (await import("canvas-confetti")).default;
+  const r = el?.getBoundingClientRect();
+  confetti({
+    particleCount: opts.count ?? 60,
+    spread: opts.spread ?? 70,
+    startVelocity: 32,
+    ticks: 180,
+    scalar: 0.9,
+    zIndex: 9999,
+    disableForReducedMotion: true,
+    colors: opts.colors,
+    origin: r
+      ? { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight }
+      : { y: 0.6 },
+  });
 }
 
-export function NowPlayingCard({
+/* ───────────────────────────── Now playing ───────────────────────────── */
+
+export function NowPlayingHero({
   np,
   receivedAt,
   user,
   onChange,
+  onRequest,
+  canRequest = true,
+  controls,
 }: {
   np: NowPlaying | null;
   receivedAt: number;
   user: User | null;
   onChange: () => void;
+  onRequest: () => void;
+  canRequest?: boolean;
+  controls?: React.ReactNode;
 }) {
   const progress = useProgress(np, receivedAt);
-  const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState<number | null>(null);
 
-  useEffect(() => {
-    setErr(null);
-    setPending(null);
-  }, [np?.id]);
+  useEffect(() => setPending(null), [np?.id]);
 
   if (!np) {
     return (
-      <section className="card">
-        <h2>Now playing</h2>
-        <p className="muted">Nothing from the queue is playing yet. Add a song below!</p>
+      <section className="hero glass hero-empty">
+        <div className="hero-media">
+          <div className="cover-stack idle">
+            <div className="vinyl spin slow" />
+          </div>
+        </div>
+        <div className="hero-body">
+          <div className="eyebrow">
+            <Equalizer playing={false} /> Now playing
+          </div>
+          <h2 className="hero-title">Silence… for now</h2>
+          <p className="hero-artist">Nothing from the queue is playing yet. Be the one who starts the party.</p>
+          <div>
+            <button className="btn btn-lg" onClick={onRequest} disabled={!canRequest}>
+              <Plus size={20} strokeWidth={2.6} /> Request the first song
+            </button>
+          </div>
+          {controls}
+        </div>
       </section>
     );
   }
 
   const mine = user?.id === np.addedBy.id;
   const score = pending ?? np.myScore;
+  const remaining = np.track.durationMs - progress;
+  const pct = (progress / Math.max(1, np.track.durationMs)) * 100;
 
-  async function rate(n: number) {
+  async function rate(n: number, el: HTMLElement) {
     if (!user) return;
+    const prev = pending;
     setPending(n);
-    setErr(null);
+    if (n >= 9) burst(el, { count: n === 10 ? 120 : 50, colors: [heat(n), "#ffffff", "#ffd54a"] });
     try {
       await postJSON("/api/rate", { user, entryId: np!.id, score: n });
       onChange();
     } catch (e) {
-      setPending(null);
-      setErr(e instanceof Error ? e.message : "Could not rate");
+      setPending(prev);
+      toast.error(e instanceof Error ? e.message : "Could not rate");
     }
   }
 
   return (
-    <section className="card now">
-      <h2>Now playing {!np.isPlaying && <span className="pill">paused</span>}</h2>
-      <div className="row">
-        <Art src={np.track.image} size={96} />
-        <div className="grow">
-          <div className="title">{np.track.name}</div>
-          <div className="muted">{np.track.artists}</div>
-          <div className="muted small">
-            Picked by <strong>{mine ? "you" : np.addedBy.name}</strong>
-          </div>
-        </div>
-        <div className="avg">
-          <div className="big">{np.average !== null ? np.average.toFixed(1) : "–"}</div>
-          <div className="muted small">
-            {np.ratingCount} {np.ratingCount === 1 ? "vote" : "votes"}
-          </div>
-        </div>
-      </div>
-      <div className="bar">
-        <div className="fill" style={{ width: `${(progress / Math.max(1, np.track.durationMs)) * 100}%` }} />
-      </div>
-      <div className="times muted small">
-        <span>{fmtTime(progress)}</span>
-        <span>{fmtTime(np.track.durationMs)}</span>
+    <section className="hero glass">
+      <div className="hero-media">
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={np.id}
+            className="cover-stack"
+            initial={{ opacity: 0, scale: 0.8, rotate: -6, x: 40 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0, x: 0 }}
+            exit={{ opacity: 0, scale: 0.85, x: -60 }}
+            transition={{ type: "spring", stiffness: 120, damping: 18 }}
+          >
+            <div className={`vinyl ${np.isPlaying ? "spin" : ""}`}>
+              {np.track.image && <div className="vinyl-label" style={{ backgroundImage: `url(${np.track.image})` }} />}
+            </div>
+            <Art src={np.track.image} size={300} className="cover" />
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {np.canRate ? (
-        <div>
-          <div className="vote-note">
-            🗳️ Voting is open until the song finishes
-            {np.isPlaying ? ` · ${fmtTime(np.track.durationMs - progress)} left` : " · paused"}
+      <div className="hero-body">
+        <div className="eyebrow">
+          <Equalizer playing={np.isPlaying} /> {np.isPlaying ? "Now playing" : "Paused"}
+        </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={np.id}
+            className="hero-text"
+            initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
+            transition={{ duration: 0.35 }}
+          >
+            <h2 className="hero-title" title={np.track.name}>
+              {np.track.name}
+              {np.track.explicit && <span className="explicit">E</span>}
+            </h2>
+            <div className="hero-artist">{np.track.artists}</div>
+            <div className="picked-by">
+              <Avatar name={np.addedBy.name} size={24} />
+              <span>
+                Picked by <strong className={mine ? "accent" : ""}>{mine ? "you" : np.addedBy.name}</strong>
+              </span>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="progress">
+          <div className="bar">
+            <div className="fill" style={{ width: `${pct}%` }}>
+              <span className="knob" />
+            </div>
           </div>
-          <div className="muted small">Rate this song{score ? ` (you gave ${score})` : ""}</div>
-          <div className="scores">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <button key={n} className={`score ${score === n ? "active" : ""}`} onClick={() => rate(n)}>
-                {n}
-              </button>
-            ))}
+          <div className="times">
+            <span>{fmtTime(progress)}</span>
+            <span>-{fmtTime(remaining)}</span>
           </div>
         </div>
-      ) : (
-        <p className="muted small">
-          {mine ? "This is your song. Sit back and wait for the votes!" : "Guests can rate this song"}
-          {" · voting closes when it finishes"}
-          {np.isPlaying ? ` (${fmtTime(np.track.durationMs - progress)} left)` : ""}
-        </p>
-      )}
-      {err && <p className="error">{err}</p>}
+
+        {np.canRate ? (
+          <RatingPad score={score} onRate={rate} remaining={remaining} playing={np.isPlaying} />
+        ) : mine ? (
+          <div className="mine-note">
+            <Sparkles size={18} />
+            <span>
+              This one&apos;s yours — sit back and soak up the votes.{" "}
+              <span className="muted">Voting closes when it ends.</span>
+            </span>
+          </div>
+        ) : null}
+        {controls}
+      </div>
+
+      <div className="hero-score">
+        <ScoreRing value={np.average} count={np.ratingCount} />
+        <span className="hero-score-cap">Crowd score</span>
+      </div>
     </section>
   );
 }
 
-export function SearchAdd({
+function RatingPad({
+  score,
+  onRate,
+  remaining,
+  playing,
+}: {
+  score: number | null;
+  onRate: (n: number, el: HTMLElement) => void;
+  remaining: number;
+  playing: boolean;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const shown = hover ?? score;
+  return (
+    <div className="rate">
+      <div className="rate-head">
+        <span className="rate-title">
+          {score ? "Your rating" : "Rate this song"}
+          <span className="vote-chip">
+            <span className={`dot ${playing ? "live" : ""}`} />
+            {playing ? `closes in ${fmtTime(remaining)}` : "paused"}
+          </span>
+        </span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={shown ?? 0}
+            className="rate-label"
+            style={{ color: shown ? heat(shown) : undefined }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+          >
+            {shown ? SCORE_LABELS[shown] : "Tap a number"}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+      <div className="scores" onMouseLeave={() => setHover(null)}>
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+          <motion.button
+            key={n}
+            className={`score ${score === n ? "active" : ""} ${score && n <= score ? "lit" : ""}`}
+            style={{ "--c": heat(n) } as React.CSSProperties}
+            whileHover={{ y: -3 }}
+            whileTap={{ scale: 0.86 }}
+            onMouseEnter={() => setHover(n)}
+            onFocus={() => setHover(n)}
+            onBlur={() => setHover(null)}
+            onClick={(e) => onRate(n, e.currentTarget)}
+            aria-label={`Rate ${n} out of 10`}
+            aria-pressed={score === n}
+          >
+            {score === n && (
+              <motion.span layoutId="score-pick" className="score-pick" transition={{ type: "spring", stiffness: 500, damping: 32 }} />
+            )}
+            <span className="score-n">{n}</span>
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────── Request a song ───────────────────────────── */
+
+const SUGGESTIONS = ["Mr. Brightside", "Dancing Queen", "Daft Punk", "Fleetwood Mac", "Kendrick Lamar", "Oasis"];
+
+export function RequestPanel({
   user,
   disabled,
+  queuedIds,
+  queueLength,
+  myQueued,
   onAdded,
+  inputRef,
+  autoFocus,
+  onClose,
 }: {
   user: User | null;
   disabled: boolean;
+  queuedIds: Set<string>;
+  queueLength: number;
+  myQueued: number;
   onAdded: () => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+  autoFocus?: boolean;
+  onClose?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<TrackInfo[]>([]);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const localRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? localRef;
 
   useEffect(() => {
-    if (q.trim().length < 2) {
+    const query = q.trim();
+    setError(null);
+    if (query.length < 2) {
       setResults([]);
+      setLoading(false);
       return;
     }
+    setLoading(true);
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`, { signal: ctrl.signal });
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: ctrl.signal });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error);
         setResults(j.tracks);
+        setLoading(false);
       } catch (e) {
-        if ((e as Error).name !== "AbortError") setMsg({ ok: false, text: (e as Error).message || "Search failed" });
+        if ((e as Error).name !== "AbortError") {
+          setError((e as Error).message || "Search failed");
+          setLoading(false);
+        }
       }
-    }, 350);
+    }, 300);
     return () => {
       clearTimeout(t);
       ctrl.abort();
     };
   }, [q]);
 
-  async function add(t: TrackInfo) {
+  async function add(t: TrackInfo, el: HTMLElement) {
+    if (!user) return;
     setBusy(t.id);
-    setMsg(null);
     try {
       await postJSON("/api/queue", { user, trackId: t.id });
-      setMsg({ ok: true, text: `Added "${t.name}" to the queue` });
-      setQ("");
-      setResults([]);
+      setJustAdded((s) => new Set(s).add(t.id));
+      burst(el, { count: 40, spread: 55 });
+      toast.success(`Requested “${t.name}”`, {
+        description: `${t.artists} · #${queueLength + 1} in the queue`,
+        icon: <Art src={t.image} size={32} />,
+      });
       onAdded();
     } catch (e) {
-      setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not add" });
+      toast.error(e instanceof Error ? e.message : "Could not add");
     } finally {
       setBusy(null);
     }
   }
 
-  const locked = disabled || !user;
+  const query = q.trim();
 
   return (
-    <section className="card">
-      <h2>Add a song</h2>
-      <input
-        className="input"
-        placeholder="Search for a song or artist…"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        disabled={!user}
-      />
-      {msg && <p className={msg.ok ? "ok" : "error"}>{msg.text}</p>}
-      <ul className="list">
-        {results.map((t) => (
-          <li key={t.id} className="row">
-            <Art src={t.image} />
-            <div className="grow">
-              <div className="title">{t.name}</div>
-              <div className="muted small">{t.artists}</div>
+    <section className="panel glass request" id="request">
+      <header className="panel-head">
+        <div className="panel-title">
+          <span className="panel-icon hot">
+            <Plus size={18} strokeWidth={2.8} />
+          </span>
+          <div>
+            <h2>Request a song</h2>
+            <p className="panel-sub">
+              {myQueued > 0
+                ? `You've got ${myQueued} in the queue — add as many as you like`
+                : "Search Spotify and drop it in the queue"}
+            </p>
+          </div>
+        </div>
+        {onClose && (
+          <button className="icon-btn" onClick={onClose} aria-label="Close">
+            <X size={20} />
+          </button>
+        )}
+      </header>
+
+      <div className={`search ${disabled ? "is-disabled" : ""}`}>
+        <Search size={20} className="search-icon" />
+        <input
+          ref={ref}
+          className="search-input"
+          placeholder={disabled ? "Requests open once the host connects Spotify" : "Song, artist or album…"}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              if (q) setQ("");
+              else onClose?.();
+            }
+          }}
+          disabled={disabled || !user}
+          autoFocus={autoFocus}
+          enterKeyHint="search"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {loading ? (
+          <Spinner size={18} />
+        ) : q ? (
+          <button className="icon-btn sm" onClick={() => (setQ(""), ref.current?.focus())} aria-label="Clear search">
+            <X size={16} />
+          </button>
+        ) : (
+          !onClose && <Kbd>/</Kbd>
+        )}
+      </div>
+
+      <div className="results">
+        {error && <p className="error">{error}</p>}
+
+        {query.length < 2 && !disabled && (
+          <div className="suggest">
+            <span className="muted small">Need inspiration?</span>
+            <div className="chips">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="chip-btn" onClick={() => (setQ(s), ref.current?.focus())}>
+                  {s}
+                </button>
+              ))}
             </div>
-            <button className="btn" disabled={locked || busy !== null} onClick={() => add(t)}>
-              {busy === t.id ? "…" : "Add"}
-            </button>
-          </li>
-        ))}
-      </ul>
+          </div>
+        )}
+
+        {loading && results.length === 0 && (
+          <ul className="list">
+            {Array.from({ length: 5 }, (_, i) => (
+              <li key={i} className="skeleton-row">
+                <span className="sk sk-art" />
+                <span className="sk-lines">
+                  <span className="sk sk-line" />
+                  <span className="sk sk-line short" />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!loading && query.length >= 2 && results.length === 0 && !error && (
+          <p className="empty-mini">No matches for “{query}”. Try another spelling?</p>
+        )}
+
+        <ul className={`list ${loading ? "dim" : ""}`}>
+          <AnimatePresence initial={false}>
+            {results.map((t, i) => {
+              const queued = queuedIds.has(t.id) || justAdded.has(t.id);
+              return (
+                <motion.li
+                  key={t.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ delay: i * 0.03 }}
+                >
+                  <button
+                    className={`result ${queued ? "queued" : ""}`}
+                    disabled={disabled || !user || busy !== null || queued}
+                    onClick={(e) => add(t, e.currentTarget.querySelector(".add-dot") ?? e.currentTarget)}
+                  >
+                    <Art src={t.image} size={48} />
+                    <span className="grow">
+                      <span className="title">
+                        {t.name}
+                        {t.explicit && <span className="explicit">E</span>}
+                      </span>
+                      <span className="sub">
+                        {t.artists} · {fmtTime(t.durationMs)}
+                      </span>
+                    </span>
+                    <span className={`add-dot ${queued ? "done" : ""}`}>
+                      {busy === t.id ? (
+                        <Spinner size={16} />
+                      ) : queued ? (
+                        <Check size={18} strokeWidth={3} />
+                      ) : (
+                        <Plus size={18} strokeWidth={3} />
+                      )}
+                    </span>
+                  </button>
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
+        </ul>
+      </div>
     </section>
   );
 }
 
-export function QueueList({
+/* ───────────────────────────── Queue ───────────────────────────── */
+
+export function QueuePanel({
   queue,
+  np,
+  receivedAt,
   userId,
   actions,
+  onRequest,
+  canRequest = true,
+  onReorder,
 }: {
   queue: PublicEntry[];
+  np: NowPlaying | null;
+  receivedAt: number;
   userId: string | null;
   actions?: (e: PublicEntry) => React.ReactNode;
+  onRequest: () => void;
+  canRequest?: boolean;
+  onReorder?: (ids: string[]) => Promise<void>;
 }) {
+  const progress = useProgress(np, receivedAt);
+  // While the host is dragging (or the save is in flight) we show the local order, not polled state.
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  const dragging = useRef(false);
+  const latestIds = useRef<string[]>([]);
+
+  const total = queue.reduce((a, e) => a + e.track.durationMs, 0);
+  let pinnedCount = 0;
+  while (pinnedCount < queue.length && queue[pinnedCount].handedOff) pinnedCount++;
+  const pinned = queue.slice(0, pinnedCount);
+  const movableById = new Map(queue.slice(pinnedCount).map((e) => [e.id, e]));
+  const movableIds = localOrder
+    ? [...localOrder.filter((id) => movableById.has(id)), ...[...movableById.keys()].filter((id) => !localOrder.includes(id))]
+    : [...movableById.keys()];
+  const ordered = [...pinned, ...movableIds.map((id) => movableById.get(id)!)];
+  latestIds.current = movableIds;
+  const serverKey = queue.slice(pinnedCount).map((e) => e.id).join();
+
+  // Once polled state matches what the host dropped (or after a timeout), go back to server order.
+  useEffect(() => {
+    if (!localOrder || dragging.current) return;
+    if (serverKey === latestIds.current.join()) {
+      setLocalOrder(null);
+      return;
+    }
+    const t = setTimeout(() => !dragging.current && setLocalOrder(null), 5000);
+    return () => clearTimeout(t);
+  }, [serverKey, localOrder]);
+
+  const etas: number[] = [];
+  let eta = np ? Math.max(0, np.track.durationMs - progress) : 0;
+  for (const e of ordered) {
+    etas.push(eta);
+    eta += e.track.durationMs;
+  }
+
+  async function commit() {
+    dragging.current = false;
+    const ids = latestIds.current;
+    if (!onReorder || serverKey === ids.join()) {
+      setLocalOrder(null);
+      return;
+    }
+    try {
+      await onReorder(ids);
+    } catch {
+      setLocalOrder(null);
+    }
+  }
+
+  const row = (e: PublicEntry, i: number, handle?: React.ReactNode) => (
+    <QueueRowBody e={e} i={i} at={etas[i]} showEta={!!np} mine={e.addedBy.id === userId} handle={handle} actions={actions} />
+  );
+
   return (
-    <section className="card">
-      <h2>Up next ({queue.length})</h2>
+    <section className="panel glass">
+      <header className="panel-head">
+        <div className="panel-title">
+          <span className="panel-icon">
+            <ListMusic size={18} />
+          </span>
+          <div>
+            <h2>
+              Up next <span className="count">{queue.length}</span>
+            </h2>
+            <p className="panel-sub">
+              {queue.length
+                ? `${fmtDuration(total)} of music lined up${onReorder && queue.length > 1 ? " · drag to reorder" : ""}`
+                : "Nothing queued"}
+            </p>
+          </div>
+        </div>
+      </header>
+
       {queue.length === 0 ? (
-        <p className="muted">The queue is empty.</p>
-      ) : (
-        <ol className="list">
-          {queue.map((e, i) => (
-            <li key={e.id} className="row">
-              <span className="muted idx">{i + 1}</span>
-              <Art src={e.track.image} />
-              <div className="grow">
-                <div className="title">{e.track.name}</div>
-                <div className="muted small">
-                  {e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}
-                  {e.handedOff && " · up next on Spotify"}
-                </div>
-              </div>
-              {actions?.(e)}
-            </li>
+        <div className="empty">
+          <Disc3 size={40} className="empty-icon" />
+          <p>The queue is empty.</p>
+          <button className="btn ghost" onClick={onRequest} disabled={!canRequest}>
+            <Plus size={16} /> Add a song
+          </button>
+        </div>
+      ) : onReorder ? (
+        <div className="list queue">
+          {pinned.map((e, i) => (
+            <div key={e.id} className={`qrow ${e.addedBy.id === userId ? "mine" : ""} ${i === 0 ? "first" : ""}`}>
+              {row(e, i, <span className="drag-handle locked" title="Already sent to Spotify — can’t be moved"><Lock size={14} /></span>)}
+            </div>
           ))}
+          <Reorder.Group
+            as="ol"
+            axis="y"
+            values={movableIds}
+            onReorder={setLocalOrder}
+            className="list"
+          >
+            {movableIds.map((id, k) => {
+              const e = movableById.get(id)!;
+              return (
+                <DraggableQueueRow
+                  key={id}
+                  id={id}
+                  className={`qrow ${e.addedBy.id === userId ? "mine" : ""} ${pinnedCount + k === 0 ? "first" : ""}`}
+                  onStart={() => {
+                    dragging.current = true;
+                    setLocalOrder(movableIds);
+                  }}
+                  onEnd={commit}
+                >
+                  {(handle) => row(e, pinnedCount + k, handle)}
+                </DraggableQueueRow>
+              );
+            })}
+          </Reorder.Group>
+        </div>
+      ) : (
+        <ol className="list queue">
+          <AnimatePresence initial={false}>
+            {ordered.map((e, i) => (
+              <motion.li
+                key={e.id}
+                layout
+                initial={{ opacity: 0, y: 16, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -30, transition: { duration: 0.2 } }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className={`qrow ${e.addedBy.id === userId ? "mine" : ""} ${i === 0 ? "first" : ""}`}
+              >
+                {row(e, i)}
+              </motion.li>
+            ))}
+          </AnimatePresence>
         </ol>
       )}
     </section>
   );
 }
 
-export function Leaderboard({ rows }: { rows: AppState["leaderboard"] }) {
-  if (!rows.length) return null;
+function DraggableQueueRow({
+  id,
+  className,
+  onStart,
+  onEnd,
+  children,
+}: {
+  id: string;
+  className: string;
+  onStart: () => void;
+  onEnd: () => void;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const controls = useDragControls();
   return (
-    <section className="card">
-      <h2>Leaderboard</h2>
-      <ol className="list">
-        {rows.map((r, i) => (
-          <li key={r.name + i} className="row">
-            <span className="muted idx">{i === 0 ? "🏆" : i + 1}</span>
-            <div className="grow title">{r.name}</div>
-            <span className="muted small">
-              {r.songs} {r.songs === 1 ? "song" : "songs"}
+    <Reorder.Item
+      value={id}
+      className={className}
+      dragListener={false}
+      dragControls={controls}
+      onDragStart={onStart}
+      onDragEnd={onEnd}
+      whileDrag={{ scale: 1.03, boxShadow: "0 18px 40px -12px rgba(0,0,0,0.7)", zIndex: 5 }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 34 }}
+    >
+      {children(
+        <span
+          className="drag-handle"
+          title="Drag to reorder"
+          aria-label="Drag to reorder"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            controls.start(e);
+          }}
+        >
+          <GripVertical size={18} />
+        </span>,
+      )}
+    </Reorder.Item>
+  );
+}
+
+function QueueRowBody({
+  e,
+  i,
+  at,
+  showEta,
+  mine,
+  handle,
+  actions,
+}: {
+  e: PublicEntry;
+  i: number;
+  at: number;
+  showEta: boolean;
+  mine: boolean;
+  handle?: React.ReactNode;
+  actions?: (e: PublicEntry) => React.ReactNode;
+}) {
+  return (
+    <>
+      {handle}
+      <span className="qpos">{i + 1}</span>
+      <Art src={e.track.image} size={44} />
+      <div className="grow">
+        <div className="title">
+          {e.track.name}
+          {e.track.explicit && <span className="explicit">E</span>}
+        </div>
+        <div className="sub">{e.track.artists}</div>
+        <div className="meta">
+          <span className="who">
+            <Avatar name={e.addedBy.name} size={16} />
+            {mine ? "You" : e.addedBy.name}
+          </span>
+          {e.handedOff ? <span className="tag next">Locked in</span> : i === 0 ? <span className="tag next">Next</span> : null}
+          {showEta && (
+            <span className="eta">
+              <Clock size={11} /> {at < 60000 ? "soon" : `~${fmtDuration(at)}`}
             </span>
-            <strong>{r.average.toFixed(2)}</strong>
-          </li>
+          )}
+        </div>
+      </div>
+      {actions?.(e)}
+    </>
+  );
+}
+
+/* ───────────────────────────── Leaderboard / Played ───────────────────────────── */
+
+export function SidePanel({
+  leaderboard,
+  history,
+  userId,
+  userName,
+}: {
+  leaderboard: AppState["leaderboard"];
+  history: PublicEntry[];
+  userId: string | null;
+  userName: string | null;
+}) {
+  const [tab, setTab] = useState<"board" | "played">("board");
+  return (
+    <section className="panel glass">
+      <div className="tabs" role="tablist">
+        {(
+          [
+            ["board", "Leaderboard", Trophy, leaderboard.length],
+            ["played", "Played", HistoryIcon, history.length],
+          ] as const
+        ).map(([key, label, Icon, n]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            className={`tab ${tab === key ? "on" : ""}`}
+            onClick={() => setTab(key)}
+          >
+            {tab === key && <motion.span layoutId="tab-pill" className="tab-pill" transition={{ type: "spring", stiffness: 400, damping: 34 }} />}
+            <Icon size={16} />
+            <span>{label}</span>
+            {n > 0 && <span className="count">{n}</span>}
+          </button>
         ))}
-      </ol>
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, x: tab === "board" ? -16 : 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: tab === "board" ? 16 : -16 }}
+          transition={{ duration: 0.18 }}
+        >
+          {tab === "board" ? (
+            <Leaderboard rows={leaderboard} me={userName} />
+          ) : (
+            <History items={history} userId={userId} />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </section>
   );
 }
 
-export function History({ items, userId }: { items: PublicEntry[]; userId: string | null }) {
-  if (!items.length) return null;
+const MEDALS = ["#ffd54a", "#cfd8dc", "#e0a06a"];
+
+export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: string | null }) {
+  if (!rows.length) {
+    return (
+      <div className="empty">
+        <Trophy size={40} className="empty-icon" />
+        <p>No scores yet. Rate songs to crown the best taste in the room.</p>
+      </div>
+    );
+  }
   return (
-    <section className="card">
-      <h2>Played</h2>
-      <ul className="list">
-        {items.map((e) => (
-          <li key={e.id} className="row top">
-            <Art src={e.track.image} />
-            <div className="grow">
-              <div className="title">{e.track.name}</div>
-              <div className="muted small">
-                {e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}
+    <ol className="list board">
+      {rows.map((r, i) => (
+        <motion.li
+          key={r.name}
+          layout
+          className={`brow ${i < 3 ? "top" : ""} ${me && r.name === me ? "mine" : ""}`}
+          style={{ "--medal": MEDALS[i] ?? "var(--muted)" } as React.CSSProperties}
+        >
+          <span className="rank">{i === 0 ? <Crown size={18} /> : i + 1}</span>
+          <Avatar name={r.name} size={34} ring={i === 0} />
+          <div className="grow">
+            <div className="title">
+              {r.name}
+              {me && r.name === me && <span className="you-tag">you</span>}
+            </div>
+            <div className="bscore">
+              <motion.span
+                className="bscore-fill"
+                initial={{ width: 0 }}
+                animate={{ width: `${r.average * 10}%` }}
+                transition={{ type: "spring", stiffness: 60, damping: 16, delay: i * 0.05 }}
+                style={{ background: heat(r.average) }}
+              />
+            </div>
+          </div>
+          <div className="bnum">
+            <strong style={{ color: heat(r.average) }}>{r.average.toFixed(2)}</strong>
+            <span className="sub">
+              {r.songs} {r.songs === 1 ? "song" : "songs"}
+            </span>
+          </div>
+        </motion.li>
+      ))}
+    </ol>
+  );
+}
+
+export function History({ items, userId }: { items: PublicEntry[]; userId: string | null }) {
+  if (!items.length) {
+    return (
+      <div className="empty">
+        <Music2 size={40} className="empty-icon" />
+        <p>Songs land here with their scores once they finish.</p>
+      </div>
+    );
+  }
+  return (
+    <ul className="list played">
+      {items.map((e) => (
+        <li key={e.id} className="hrow">
+          <Art src={e.track.image} size={44} />
+          <div className="grow">
+            <div className="title">{e.track.name}</div>
+            <div className="sub">
+              {e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}
+            </div>
+            {!!e.ratings?.length && (
+              <div className="chips">
+                {e.ratings.map((r, i) => (
+                  <span key={i} className="chip" style={{ "--c": heat(r.score) } as React.CSSProperties}>
+                    {r.name} <b>{r.score}</b>
+                  </span>
+                ))}
               </div>
-              {!!e.ratings?.length && (
-                <div className="chips">
-                  {e.ratings.map((r, i) => (
-                    <span key={i} className="chip">
-                      {r.name} {r.score}
-                    </span>
-                  ))}
+            )}
+          </div>
+          <ScoreBadge value={e.average} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ───────────────────────────── Overlays ───────────────────────────── */
+
+export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  const controls = useDragControls();
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="scrim"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
+          <motion.div
+            className="sheet"
+            role="dialog"
+            aria-modal
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 380, damping: 38 }}
+            drag="y"
+            dragControls={controls}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.6 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 120 || info.velocity.y > 600) onClose();
+            }}
+          >
+            <div className="sheet-handle" onPointerDown={(e) => controls.start(e)}>
+              <span />
+            </div>
+            {children}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+export function NameDialog({
+  open,
+  initial,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  initial: string;
+  onSave: (name: string) => void;
+  onClose: () => void;
+}) {
+  const [v, setV] = useState(initial);
+  useEffect(() => {
+    if (open) setV(initial);
+  }, [open, initial]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+          <div className="dialog-wrap">
+            <motion.form
+              className="dialog glass"
+              role="dialog"
+              aria-modal
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (v.trim()) {
+                  onSave(v);
+                  onClose();
+                }
+              }}
+            >
+              <div className="row">
+                <Avatar name={v || "?"} size={44} />
+                <div className="grow">
+                  <h3>Change your name</h3>
+                  <p className="muted small">Shown next to your requests and ratings.</p>
                 </div>
-              )}
-            </div>
-            <div className="avg small">
-              <strong>{e.average !== null ? e.average.toFixed(1) : "–"}</strong>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+              </div>
+              <input
+                className="input"
+                autoFocus
+                maxLength={24}
+                value={v}
+                onChange={(e) => setV(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && onClose()}
+              />
+              <div className="row end">
+                <button type="button" className="btn ghost" onClick={onClose}>
+                  Cancel
+                </button>
+                <button className="btn" disabled={!v.trim()}>
+                  Save
+                </button>
+              </div>
+            </motion.form>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

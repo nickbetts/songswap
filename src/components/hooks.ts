@@ -132,6 +132,104 @@ export function fmtTime(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+export const DEFAULT_ACCENT = "#1ed760";
+
+/** Picks a vivid, readable-on-dark accent colour from an image (falls back to Spotify green). */
+export function useAccentColor(src: string | null | undefined) {
+  const [color, setColor] = useState(DEFAULT_ACCENT);
+  useEffect(() => {
+    if (!src) {
+      setColor(DEFAULT_ACCENT);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      try {
+        const c = document.createElement("canvas");
+        c.width = c.height = 24;
+        const ctx = c.getContext("2d", { willReadFrequently: true })!;
+        ctx.drawImage(img, 0, 0, 24, 24);
+        const d = ctx.getImageData(0, 0, 24, 24).data;
+        // Weight pixels by saturation so we pick the "colourful" part of the cover, not the greys.
+        let r = 0, g = 0, b = 0, w = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const max = Math.max(d[i], d[i + 1], d[i + 2]);
+          const min = Math.min(d[i], d[i + 1], d[i + 2]);
+          const weight = (max - min) / 255 + 0.02;
+          r += d[i] * weight;
+          g += d[i + 1] * weight;
+          b += d[i + 2] * weight;
+          w += weight;
+        }
+        const [h, s] = rgbToHsl(r / w, g / w, b / w);
+        setColor(s < 0.12 ? DEFAULT_ACCENT : `hsl(${Math.round(h)} ${Math.round(Math.max(65, s * 100))}% 62%)`);
+      } catch {
+        setColor(DEFAULT_ACCENT);
+      }
+    };
+    img.onerror = () => !cancelled && setColor(DEFAULT_ACCENT);
+    img.src = src;
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+  return color;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+export function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    setMatches(m.matches);
+    const on = () => setMatches(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return matches;
+}
+
+export function fmtDuration(ms: number) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "<1 min";
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** 1 → red, 10 → green. */
+export function heat(score: number) {
+  const t = Math.min(1, Math.max(0, (score - 1) / 9));
+  return `hsl(${Math.round(t * 135)} 85% 58%)`;
+}
+
+export const SCORE_LABELS: Record<number, string> = {
+  1: "Skip it 💀",
+  2: "Oof 😬",
+  3: "Not for me 😕",
+  4: "Meh 😐",
+  5: "It's fine 🙂",
+  6: "Decent 👍",
+  7: "Good one 😎",
+  8: "Love it 🎶",
+  9: "Banger 🔥",
+  10: "Masterpiece 👑",
+};
+
 /** Ticks locally so the progress bar moves smoothly between polls. */
 export function useProgress(np: NowPlaying | null, receivedAt: number) {
   const [, setTick] = useState(0);

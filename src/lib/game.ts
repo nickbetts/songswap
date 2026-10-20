@@ -121,6 +121,33 @@ export async function removeEntry(entryId: string) {
   });
 }
 
+/**
+ * Reorders the queue to match `order` (entry ids). Songs already handed to Spotify stay
+ * pinned at the front since Spotify's own queue can't be reordered; ids not in `order`
+ * (e.g. added while the host was dragging) keep their relative order at the end.
+ */
+export async function reorderQueue(order: unknown) {
+  if (!Array.isArray(order) || order.length > 500 || !order.every((x) => typeof x === "string")) {
+    throw new GameError(400, "Invalid order");
+  }
+  await withLock("state", async () => {
+    const s = await load();
+    let pinnedCount = 0;
+    while (pinnedCount < s.queue.length && s.queue[pinnedCount].handedOffAt) pinnedCount++;
+    const pinned = s.queue.slice(0, pinnedCount);
+    const rest = s.queue.slice(pinnedCount);
+    const rank = new Map((order as string[]).map((id, i) => [id, i]));
+    const key = (e: Entry, i: number) => rank.get(e.id) ?? order.length + i;
+    const sorted = rest
+      .map((e, i) => ({ e, k: key(e, i) }))
+      .sort((a, b) => a.k - b.k)
+      .map((x) => x.e);
+    s.queue = [...pinned, ...sorted];
+    await save(s);
+  });
+  await forceSync();
+}
+
 export async function playNow(entryId: string) {
   await withLock("state", async () => {
     const s = await load();

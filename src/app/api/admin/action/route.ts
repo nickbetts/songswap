@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { fail } from "@/lib/http";
-import { playNow, playerControl, removeEntry, resetAll } from "@/lib/game";
+import { playNow, playerControl, removeEntry, reorderQueue, resetAll } from "@/lib/game";
 import { clearAuth } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,9 @@ export async function POST(req: Request) {
         break;
       case "remove":
         await removeEntry(String(body.entryId));
+        break;
+      case "reorder":
+        await reorderQueue(body.order);
         break;
       case "reset":
         await resetAll();

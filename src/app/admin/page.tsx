@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { NowPlayingCard, QueueList, History, SearchAdd, Leaderboard } from "@/components/parts";
+import { motion } from "motion/react";
+import { toast } from "sonner";
+import { ArrowLeft, Link2, Lock, LogOut, Pause, Play, PlayCircle, RotateCcw, SkipForward, Trash2, Unplug } from "lucide-react";
+import { Dashboard, Logo, Themed } from "@/components/shell";
 import { postJSON, useAppState, type User } from "@/components/hooks";
+import { Spinner } from "@/components/ui";
 
 const HOST: User = { id: "host-nick-0001", name: "Nick" };
 
@@ -10,8 +14,8 @@ export default function Admin() {
   const [admin, setAdmin] = useState<boolean | null>(null);
   const [pw, setPw] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
-  const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null);
-  const { state, receivedAt, refresh } = useAppState(admin ? HOST.id : null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const { state, receivedAt, loadError, refresh } = useAppState(admin ? HOST.id : null);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -19,8 +23,8 @@ export default function Admin() {
       .then((j) => setAdmin(!!j.admin))
       .catch(() => setAdmin(false));
     const p = new URLSearchParams(location.search);
-    if (p.get("connected")) setFlash({ ok: true, text: "Spotify connected!" });
-    else if (p.get("error")) setFlash({ ok: false, text: `Spotify error: ${p.get("error")}` });
+    if (p.get("connected")) toast.success("Spotify connected!");
+    else if (p.get("error")) toast.error(`Spotify error: ${p.get("error")}`);
     if (p.size) history.replaceState(null, "", "/admin");
   }, []);
 
@@ -37,11 +41,14 @@ export default function Admin() {
 
   async function act(action: string, extra: Record<string, unknown> = {}, confirmText?: string) {
     if (confirmText && !confirm(confirmText)) return;
+    const key = action + (extra.entryId ?? "");
+    setBusy(key);
     try {
       await postJSON("/api/admin/action", { action, ...extra });
-      setFlash(null);
     } catch (err) {
-      setFlash({ ok: false, text: err instanceof Error ? err.message : "Failed" });
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(null);
     }
     refresh();
   }
@@ -50,117 +57,172 @@ export default function Admin() {
 
   if (!admin) {
     return (
-      <main className="wrap">
-        <header className="head">
-          <h1>🎧 Host login</h1>
-        </header>
-        <form className="card" onSubmit={login}>
-          <input
-            className="input"
-            type="password"
-            autoFocus
-            placeholder="Admin password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-          />
-          {msg && <p className="error">{msg}</p>}
-          <button className="btn" disabled={!pw}>
-            Sign in
-          </button>
-        </form>
-        <footer className="foot small">
-          <a href="/">← Back to Song Swap</a>
-        </footer>
-      </main>
+      <Themed image={null}>
+        <main className="join">
+          <motion.form
+            className="join-card glass narrow"
+            onSubmit={login}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 140, damping: 20 }}
+          >
+            <Logo />
+            <h1 className="join-title sm">Host login</h1>
+            <p className="muted">Sign in to connect Spotify and run the decks.</p>
+            <label className="field">
+              <span className="field-label">Admin password</span>
+              <span className="field-row">
+                <Lock size={18} className="muted" />
+                <input
+                  className="input bare"
+                  type="password"
+                  autoFocus
+                  placeholder="••••••••"
+                  value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                />
+              </span>
+            </label>
+            {msg && <p className="error">{msg}</p>}
+            <button className="btn btn-lg btn-cta" disabled={!pw}>
+              Sign in
+            </button>
+          </motion.form>
+          <footer className="foot">
+            <a href="/">
+              <ArrowLeft size={14} /> Back to Song Swap
+            </a>
+          </footer>
+        </main>
+      </Themed>
     );
   }
 
+  const np = state?.nowPlaying ?? null;
+  const playing = !!np?.isPlaying;
+
   return (
-    <main className="wrap">
-      <header className="head">
-        <h1>🎧 Host controls</h1>
+    <Dashboard
+      user={HOST}
+      state={state}
+      receivedAt={receivedAt}
+      loadError={loadError}
+      refresh={refresh}
+      badge={<span className="host-badge">Host</span>}
+      headerExtra={
         <button
-          className="link"
+          className="icon-btn"
+          title="Sign out"
+          aria-label="Sign out"
           onClick={async () => {
             await postJSON("/api/admin/login", { logout: true });
             setAdmin(false);
           }}
         >
-          Sign out
+          <LogOut size={18} />
         </button>
-      </header>
-      {flash && <p className={flash.ok ? "ok" : "error"}>{flash.text}</p>}
-
-      <section className="card">
-        <h2>Spotify</h2>
-        {state?.connected ? (
-          <>
-            <p className="ok">Connected{state.spotifyName ? ` as ${state.spotifyName}` : ""}</p>
-            {state.error && <p className="error">{state.error}</p>}
-            <p className="muted small">
-              Keep Spotify open and playing on a device (needs Premium). Guests&apos; songs are fed into your queue
-              automatically near the end of each track.
-            </p>
-            <div className="row wrap-row">
-              <button className="btn" onClick={() => act("resume")}>
-                ▶ Play
-              </button>
-              <button className="btn" onClick={() => act("pause")}>
-                ⏸ Pause
-              </button>
-              <button className="btn" onClick={() => act("skip")}>
-                ⏭ Skip
-              </button>
-              <a className="btn ghost" href="/api/auth/login">
-                Reconnect
-              </a>
-              <button className="btn ghost" onClick={() => act("disconnect", {}, "Disconnect Spotify?")}>
-                Disconnect
-              </button>
+      }
+      top={
+        <section className="hostbar glass">
+          <div className="row grow">
+            <span className={`conn-dot ${state?.connected ? "on" : ""}`} />
+            <div className="grow">
+              <div className="title">
+                {state?.connected ? `Spotify connected${state.spotifyName ? ` as ${state.spotifyName}` : ""}` : "Spotify not connected"}
+              </div>
+              <div className="sub">
+                {state?.connected
+                  ? "Keep Spotify open on a device (Premium). Requests are fed in near the end of each track."
+                  : "Connect the Spotify account you want to play through."}
+              </div>
             </div>
-          </>
-        ) : (
-          <>
-            <p className="muted">Not connected. Sign in with the Spotify account you want to play through.</p>
-            <a className="btn" href="/api/auth/login">
-              Connect Spotify
-            </a>
-          </>
-        )}
-      </section>
-
-      <NowPlayingCard np={state?.nowPlaying ?? null} receivedAt={receivedAt} user={HOST} onChange={refresh} />
-
-      <SearchAdd user={HOST} disabled={!state?.connected} onAdded={refresh} />
-
-      <QueueList
-        queue={state?.queue ?? []}
-        userId={HOST.id}
-        actions={(e) => (
-          <div className="row">
-            <button className="btn small-btn" onClick={() => act("playNow", { entryId: e.id })}>
-              Play now
-            </button>
-            {!e.handedOff && (
-              <button className="btn small-btn ghost" onClick={() => act("remove", { entryId: e.id })}>
-                ✕
-              </button>
+          </div>
+          <div className="row wrap-row gap-sm">
+            {state?.connected ? (
+              <>
+                <a className="btn ghost sm" href="/api/auth/login">
+                  <Link2 size={15} /> Reconnect
+                </a>
+                <button className="btn ghost sm" onClick={() => act("disconnect", {}, "Disconnect Spotify?")}>
+                  <Unplug size={15} /> Disconnect
+                </button>
+              </>
+            ) : (
+              <a className="btn btn-cta" href="/api/auth/login">
+                <Link2 size={16} /> Connect Spotify
+              </a>
             )}
           </div>
-        )}
-      />
-      <Leaderboard rows={state?.leaderboard ?? []} />
-      <History items={state?.history ?? []} userId={HOST.id} />
-
-      <section className="card">
-        <h2>Danger zone</h2>
-        <button className="btn ghost" onClick={() => act("reset", {}, "Clear the queue, history and all ratings?")}>
-          Reset session
-        </button>
-      </section>
-      <footer className="foot small">
-        <a href="/">← Guest view</a>
-      </footer>
-    </main>
+        </section>
+      }
+      heroControls={
+        state?.connected && (
+          <div className="transport">
+            <motion.button
+              className="t-btn main"
+              whileTap={{ scale: 0.9 }}
+              onClick={() => act(playing ? "pause" : "resume")}
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              {busy === "pause" || busy === "resume" ? <Spinner size={20} /> : playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+            </motion.button>
+            <motion.button className="t-btn" whileTap={{ scale: 0.9 }} onClick={() => act("skip")} aria-label="Skip">
+              {busy === "skip" ? <Spinner size={18} /> : <SkipForward size={20} fill="currentColor" />}
+            </motion.button>
+            <span className="muted small">Host controls</span>
+          </div>
+        )
+      }
+      onReorder={async (order) => {
+        try {
+          await postJSON("/api/admin/action", { action: "reorder", order });
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Could not reorder");
+          throw err;
+        } finally {
+          refresh();
+        }
+      }}
+      queueActions={(e) => (
+        <div className="row-actions">
+          <button
+            className="icon-btn sm accent"
+            title="Play now"
+            aria-label="Play now"
+            onClick={() => act("playNow", { entryId: e.id })}
+          >
+            {busy === "playNow" + e.id ? <Spinner size={14} /> : <PlayCircle size={18} />}
+          </button>
+          {!e.handedOff && (
+            <button
+              className="icon-btn sm danger"
+              title="Remove"
+              aria-label="Remove"
+              onClick={() => act("remove", { entryId: e.id })}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+      )}
+      bottom={
+        <>
+          <section className="danger-zone glass">
+            <div>
+              <div className="title">Danger zone</div>
+              <div className="sub">Clears the queue, history and every rating.</div>
+            </div>
+            <button className="btn ghost danger-btn" onClick={() => act("reset", {}, "Clear the queue, history and all ratings?")}>
+              <RotateCcw size={16} /> Reset session
+            </button>
+          </section>
+          <footer className="foot">
+            <a href="/">
+              <ArrowLeft size={14} /> Guest view
+            </a>
+          </footer>
+        </>
+      }
+    />
   );
 }
