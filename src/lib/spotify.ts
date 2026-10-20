@@ -119,7 +119,12 @@ async function api(path: string, init: RequestInit & { json?: unknown } = {}) {
     throw new SpotifyError(res.status, msg);
   }
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    // Some player commands answer 200 with a non-JSON body.
+    return null;
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
