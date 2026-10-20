@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { NowPlayingCard, QueueList, History } from "@/components/parts";
-import { postJSON, useAppState } from "@/components/hooks";
+import { NowPlayingCard, QueueList, History, SearchAdd, Leaderboard } from "@/components/parts";
+import { postJSON, useAppState, type User } from "@/components/hooks";
+
+const HOST: User = { id: "host-nick-0001", name: "Nick" };
 
 export default function Admin() {
   const [admin, setAdmin] = useState<boolean | null>(null);
   const [pw, setPw] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null);
-  const { state, receivedAt, refresh } = useAppState(admin ? "admin-view" : null);
+  const { state, receivedAt, refresh } = useAppState(admin ? HOST.id : null);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -127,11 +129,13 @@ export default function Admin() {
         )}
       </section>
 
-      <NowPlayingCard np={state?.nowPlaying ?? null} receivedAt={receivedAt} user={null} onChange={refresh} />
+      <NowPlayingCard np={state?.nowPlaying ?? null} receivedAt={receivedAt} user={HOST} onChange={refresh} />
+
+      <SearchAdd user={HOST} disabled={!state?.connected} onAdded={refresh} />
 
       <QueueList
         queue={state?.queue ?? []}
-        userId={null}
+        userId={HOST.id}
         actions={(e) => (
           <div className="row">
             <button className="btn small-btn" onClick={() => act("playNow", { entryId: e.id })}>
@@ -145,7 +149,8 @@ export default function Admin() {
           </div>
         )}
       />
-      <History items={state?.history ?? []} userId={null} />
+      <Leaderboard rows={state?.leaderboard ?? []} />
+      <History items={state?.history ?? []} userId={HOST.id} />
 
       <section className="card">
         <h2>Danger zone</h2>

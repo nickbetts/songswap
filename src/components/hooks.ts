@@ -39,7 +39,6 @@ export interface AppState {
   queue: PublicEntry[];
   history: PublicEntry[];
   leaderboard: { name: string; average: number; songs: number }[];
-  me: { hasQueued: boolean };
   playerPaused: boolean;
 }
 

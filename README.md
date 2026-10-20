@@ -1,11 +1,11 @@
 # 🎧 Song Swap
 
-Guests open your link, pick a name, add **one song at a time** to a shared queue, and rate whatever is playing out of 10. Songs play through *your* Spotify account.
+Guests open your link, pick a name, add songs to a shared queue, and rate whatever is playing out of 10. Songs play through *your* Spotify account.
 
 ## How it works
 
-- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify**. Play/pause/skip, "play now", remove queued songs, reset the session.
-- **Guests** (`/`): search Spotify, add a song. You can add another once yours has started playing. Rate other people's songs 1–10 (you can't rate your own); change your vote any time while it plays.
+- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify**. Controls: play/pause/skip, "play now", remove queued songs, reset the session. The host page also lets you add songs and vote as "Nick".
+- **Guests** (`/`): search Spotify and add as many songs as you like. Rate other people's songs 1–10 (you can't rate your own); voting is open, and votes can be changed, until the song finishes.
 - The app keeps its own queue and feeds the next song into Spotify's queue ~25s before the current one ends (or starts it if the player is idle). This runs whenever anyone has the page open, so keep the host page or a guest tab open during the session.
 - Leaderboard ranks people by the average rating of their songs.
 

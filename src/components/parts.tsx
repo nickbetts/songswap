@@ -95,6 +95,10 @@ export function NowPlayingCard({
 
       {np.canRate ? (
         <div>
+          <div className="vote-note">
+            🗳️ Voting is open until the song finishes
+            {np.isPlaying ? ` · ${fmtTime(np.track.durationMs - progress)} left` : " · paused"}
+          </div>
           <div className="muted small">Rate this song{score ? ` (you gave ${score})` : ""}</div>
           <div className="scores">
             {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
@@ -105,7 +109,11 @@ export function NowPlayingCard({
           </div>
         </div>
       ) : (
-        <p className="muted small">{mine ? "This is your song. Sit back and wait for the votes!" : "Guests can rate this song."}</p>
+        <p className="muted small">
+          {mine ? "This is your song. Sit back and wait for the votes!" : "Guests can rate this song"}
+          {" · voting closes when it finishes"}
+          {np.isPlaying ? ` (${fmtTime(np.track.durationMs - progress)} left)` : ""}
+        </p>
       )}
       {err && <p className="error">{err}</p>}
     </section>
@@ -114,12 +122,10 @@ export function NowPlayingCard({
 
 export function SearchAdd({
   user,
-  hasQueued,
   disabled,
   onAdded,
 }: {
   user: User | null;
-  hasQueued: boolean;
   disabled: boolean;
   onAdded: () => void;
 }) {
@@ -166,18 +172,17 @@ export function SearchAdd({
     }
   }
 
-  const locked = hasQueued || disabled || !user;
+  const locked = disabled || !user;
 
   return (
     <section className="card">
       <h2>Add a song</h2>
-      {hasQueued && <p className="muted small">You've got a song in the queue. You can add another once it starts playing.</p>}
       <input
         className="input"
         placeholder="Search for a song or artist…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        disabled={hasQueued || !user}
+        disabled={!user}
       />
       {msg && <p className={msg.ok ? "ok" : "error"}>{msg.text}</p>}
       <ul className="list">

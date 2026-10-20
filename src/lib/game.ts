@@ -77,9 +77,6 @@ export async function addSong(person: Person, trackId: string) {
   });
   await withLock("state", async () => {
     const s = await load();
-    if (s.queue.some((e) => e.addedBy.id === person.id)) {
-      throw new GameError(409, "You already have a song in the queue. Wait until it starts playing!");
-    }
     if (s.queue.some((e) => e.track.id === track.id) || s.nowPlaying?.track.id === track.id) {
       throw new GameError(409, "That song is already queued or playing");
     }
@@ -293,9 +290,6 @@ export async function publicState(userId: string | null, admin: boolean) {
     queue: s.queue.map((e) => publicEntry(e, userId, false)),
     history: s.history.slice(0, 50).map((e) => publicEntry(e, userId, true)),
     leaderboard,
-    me: {
-      hasQueued: !!userId && s.queue.some((e) => e.addedBy.id === userId),
-    },
     playerPaused: !!pb && !pb.isPlaying,
   };
 }

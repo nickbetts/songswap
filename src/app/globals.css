@@ -239,3 +239,11 @@ h2 {
   text-align: center;
   margin-top: 12px;
 }
+.vote-note {
+  background: #12301c;
+  border: 1px solid #1ed76055;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}

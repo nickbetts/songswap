@@ -63,7 +63,6 @@ export default function Home() {
           <NowPlayingCard np={state?.nowPlaying ?? null} receivedAt={receivedAt} user={user} onChange={refresh} />
           <SearchAdd
             user={user}
-            hasQueued={state?.me.hasQueued ?? false}
             disabled={!state?.connected}
             onAdded={refresh}
           />
