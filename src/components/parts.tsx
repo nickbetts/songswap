@@ -940,7 +940,7 @@ export function History({ items, userId, admin }: { items: PublicEntry[]; userId
               <div className="chips">
                 {e.ratings.map((r, i) => (
                   <span key={i} className="chip" style={{ "--c": heat(r.score) } as React.CSSProperties}>
-                    {r.name} <b>{r.score}</b>
+                    <Avatar name={r.name} size={16} /> {r.name} <b>{r.score}</b>
                     {admin && r.id && (
                       <button
                         className="chip-x"

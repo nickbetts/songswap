@@ -3,9 +3,10 @@ import { GameError } from "./game";
 import { SpotifyError } from "./spotify";
 import { AuthError } from "./users";
 import { sameOrigin } from "./auth";
+import { AvatarError } from "./avatar";
 
 export function fail(e: unknown) {
-  if (e instanceof GameError || e instanceof SpotifyError || e instanceof AuthError) {
+  if (e instanceof GameError || e instanceof SpotifyError || e instanceof AuthError || e instanceof AvatarError) {
     return NextResponse.json({ error: e.message }, { status: e.status >= 400 && e.status < 600 ? e.status : 500 });
   }
   if (e instanceof Error && e.message === "Busy, try again") return NextResponse.json({ error: e.message }, { status: 503 });

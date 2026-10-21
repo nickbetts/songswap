@@ -5,7 +5,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { AlertTriangle, Disc3, Expand, Minimize2, Plus, Radio, Sparkles } from "lucide-react";
 import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./hooks";
 import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
-import { Avatar, Backdrop, Kbd } from "./ui";
+import { Avatar, AvatarImages, Backdrop, Kbd } from "./ui";
 import { NextTrack, RoomIntro } from "./listening-room";
 import dynamic from "next/dynamic";
 import { RoomModes } from "./room-modes";
@@ -26,26 +26,28 @@ export function Logo({ spinning = false }: { spinning?: boolean }) {
 }
 
 /** Tints the whole UI with a colour pulled from the current album art. */
-export function Themed({ image, children, effects = true, immersive = false, rave = false }: {
+export function Themed({ image, children, effects = true, immersive = false, rave = false, club = false }: {
   image: string | null;
   children: React.ReactNode;
   effects?: boolean;
   immersive?: boolean;
   rave?: boolean;
+  club?: boolean;
 }) {
   const accent = useAccentColor(image);
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   return (
     <MotionConfig reducedMotion={effects ? "user" : "always"}>
-      <div className={`app ${immersive ? "immersive" : ""} ${rave ? "rave-room" : ""}`} data-effects={effects ? "on" : "off"} style={{ "--accent": rave ? "#df8bff" : accent } as React.CSSProperties}>
+      <div className={`app ${immersive ? "immersive" : ""} ${club ? "club-room" : ""} ${rave ? "rave-room" : ""}`} data-effects={effects ? "on" : "off"} style={{ "--accent": rave ? "#d5ff3f" : club ? "#df8bff" : accent } as React.CSSProperties}>
         <Backdrop image={image} />
-        {rave && (
+        {club && (
           <div className="rave-world" aria-hidden="true">
             <div className="rave-aura rave-aura-pink" />
             <div className="rave-aura rave-aura-blue" />
             <div className="rave-horizon" />
-            <RaveScene animate={effects && !reducedMotion} />
+            <RaveScene animate={effects && !reducedMotion} intense={rave} />
             <div className="rave-vignette" />
+            {rave && <div className="rave-laser-fans"><i /><i /><i /><i /></div>}
           </div>
         )}
         {children}
@@ -119,6 +121,7 @@ export function Dashboard({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setImmersive(false);
+        setRave(false);
         return;
       }
       const t = e.target as HTMLElement;
@@ -140,7 +143,8 @@ export function Dashboard({
   };
 
   return (
-    <Themed image={np?.track.image ?? null} effects={effects} immersive={immersive} rave={rave}>
+    <AvatarImages value={state?.avatars ?? {}}>
+    <Themed image={np?.track.image ?? null} effects={effects} immersive={immersive} rave={rave} club>
       <RoomModes
         rave={rave}
         onRave={() => setRave((v) => !v)}
@@ -201,10 +205,16 @@ export function Dashboard({
 
         {top}
 
-        <RoomIntro queue={queue} played={state?.history.length ?? 0} />
+        {rave ? (
+          <section className="front-row-intro">
+            <div className="front-row-kicker"><span /> LIVE FROM YOUR LISTENING ROOM</div>
+            <h1>NO BAD VIBES.<br /><span>JUST BIG DROPS.</span></h1>
+            <div className="front-row-meta"><span>SS / MAIN STAGE</span><span>{queue.length} TRACKS IN THE PIPELINE</span><span>YOU ARE FRONT ROW</span></div>
+          </section>
+        ) : <RoomIntro queue={queue} played={state?.history.length ?? 0} />}
 
         <div className="room-toolbar">
-          <span className="room-channel"><span /> {rave ? "THE AFTERHOURS" : "THE LISTENING ROOM"} <span className="room-channel-line" /></span>
+          <span className="room-channel"><span /> {rave ? "FULL SEND / MAIN STAGE" : "THE LISTENING ROOM"} <span className="room-channel-line" /></span>
           <div className="row gap-sm">
             <button className="room-toggle" aria-pressed={effects} onClick={() => setEffects((v) => !v)} title="Toggle decorative motion">
               <Sparkles size={15} /> <span>Motion {effects ? "on" : "off"}</span>
@@ -282,5 +292,6 @@ export function Dashboard({
         </>
       )}
     </Themed>
+    </AvatarImages>
   );
 }

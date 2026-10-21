@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { AnimatePresence, motion, useSpring, useTransform } from "motion/react";
 import { heat } from "./hooks";
+import { avatarName } from "@/lib/avatar-config";
+
+export const AvatarImages = createContext<Record<string, string>>({});
 
 export function Art({ src, size = 48, className = "" }: { src: string | null; size?: number; className?: string }) {
   return src ? (
@@ -19,7 +22,10 @@ function hashHue(s: string) {
   return h % 360;
 }
 
-export function Avatar({ name, size = 24, ring = false }: { name: string; size?: number; ring?: boolean }) {
+export function Avatar({ name, size = 24, ring = false, image }: { name: string; size?: number; ring?: boolean; image?: string | null }) {
+  const images = useContext(AvatarImages);
+  const src = image === undefined ? images[avatarName(name)] : image;
+  const [failed, setFailed] = useState<string | null>(null);
   const hue = hashHue(name.toLowerCase());
   const initials =
     name
@@ -40,6 +46,10 @@ export function Avatar({ name, size = 24, ring = false }: { name: string; size?:
       aria-hidden
     >
       {initials}
+      {src && src !== failed && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} width={size} height={size} alt="" decoding="async" onError={() => setFailed(src)} />
+      )}
     </span>
   );
 }

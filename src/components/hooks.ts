@@ -34,6 +34,7 @@ export interface NowPlaying extends PublicEntry {
 }
 
 export interface AppState {
+  avatars?: Record<string, string>;
   connected: boolean;
   spotifyName: string | null;
   error: string | null;
@@ -59,6 +60,7 @@ export interface User {
   name: string;
   mustChange?: boolean;
   pending?: boolean;
+  avatarUrl?: string;
 }
 
 /** The logged-in account (from the server session cookie). `undefined` while loading. */

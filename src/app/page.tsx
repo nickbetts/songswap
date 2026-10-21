@@ -7,6 +7,8 @@ import { Dashboard, Logo, Themed } from "@/components/shell";
 import { PasswordDialog, PasswordForm } from "@/components/parts";
 import { Art, Avatar, Equalizer, Spinner } from "@/components/ui";
 import { AppState, User, postJSON, useAppState, useSession } from "@/components/hooks";
+import { ProfilePicture } from "@/components/profile-picture";
+import { avatarName } from "@/lib/avatar-config";
 
 export default function Home() {
   const { user, ready, setUser, logout } = useSession();
@@ -81,12 +83,20 @@ export default function Home() {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
               >
                 <div className="row">
-                  <Avatar name={user.name} size={44} />
+                  <Avatar name={user.name} size={44} image={state?.avatars?.[avatarName(user.name)] ?? user.avatarUrl ?? null} />
                   <div className="grow">
                     <h3>{user.name}</h3>
                     <p className="muted small">Signed in</p>
                   </div>
                 </div>
+                {!(state?.me?.pending ?? user.pending) && <ProfilePicture
+                  name={user.name}
+                  image={state?.avatars?.[avatarName(user.name)] ?? user.avatarUrl ?? null}
+                  onChanged={(url) => {
+                    setUser({ ...user, avatarUrl: url ?? undefined });
+                    refresh();
+                  }}
+                />}
                 <div className="account-menu">
                   <button className="btn ghost" onClick={() => (setMenu(false), setPwOpen(true))}>
                     <KeyRound size={16} /> Change password

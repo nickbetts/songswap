@@ -463,6 +463,8 @@ button {
   background: linear-gradient(135deg, #2a2a33, #15151b);
 }
 .avatar {
+  position: relative;
+  overflow: hidden;
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
@@ -472,6 +474,8 @@ button {
   letter-spacing: -0.02em;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.profile-picture { display: grid; gap: 12px; padding: 16px 0; border-block: 1px solid var(--line); }
 .avatar.ring {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #ffd54a, 0 0 20px rgba(255, 213, 74, 0.5);
 }
@@ -564,6 +568,9 @@ button {
   gap: 6px;
 }
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   --c: var(--muted);
   font-size: 0.72rem;
   padding: 3px 8px;
@@ -1679,12 +1686,12 @@ li.qrow {
 }
 
 /* Afterhours: real 3D behind the glass, with a neon fallback if WebGL is unavailable. */
-.rave-room {
+.club-room {
   --surface: rgba(16, 10, 32, 0.82);
   --line: rgba(178, 126, 255, 0.22);
   --line-strong: rgba(209, 162, 255, 0.4);
 }
-.rave-room .backdrop { opacity: 0.25; }
+.club-room .backdrop { opacity: 0.25; }
 .rave-world {
   position: fixed;
   inset: 0;
@@ -1724,17 +1731,17 @@ li.qrow {
   transform-origin: top;
   mask-image: linear-gradient(transparent, #000 30%, transparent);
 }
-.rave-room .glass {
+.club-room .glass {
   border-color: #b684ff36;
   box-shadow: 0 1px 0 #f0cfff12 inset, 0 24px 80px -30px #000b, 0 0 35px -20px #b751ff55;
 }
-.rave-room .hero {
+.club-room .hero {
   background: linear-gradient(125deg, #24102beb, #10142be0 58%, #10121ef2);
   border-color: #df96ff55;
 }
-.rave-room .room-channel { color: #df9eff; }
-.rave-room .topbar { border-bottom-color: #ba85ff44; }
-.rave-room .logo-disc { box-shadow: 0 0 24px #be69ff44; }
+.club-room .room-channel { color: #df9eff; }
+.club-room .topbar { border-bottom-color: #ba85ff44; }
+.club-room .logo-disc { box-shadow: 0 0 24px #be69ff44; }
 @keyframes rave-drift {
   from { transform: translate3d(-4%, 2%, 0) scale(0.95); }
   to { transform: translate3d(16%, -10%, 0) scale(1.15); }
@@ -2853,4 +2860,162 @@ button:disabled {
 [data-effects="off"] .dot.live,
 [data-effects="off"] .status.live svg {
   animation-play-state: paused !important;
+}
+
+/* Front row is a different stage, not just a different background colour. */
+.rave-room {
+  --surface: rgba(7, 8, 19, 0.88);
+  --line: rgba(213, 255, 63, 0.3);
+  --muted: #bcbccc;
+}
+.rave-room .shell { gap: 28px; }
+.rave-room .rave-world { background: #060516; }
+.rave-room .rave-aura { opacity: 0.65; animation-duration: 9s; }
+.rave-room .rave-vignette {
+  background: linear-gradient(180deg, #07051a22, #07051a00 30%, #05051055 80%),
+    radial-gradient(ellipse, transparent 45%, #03040a88);
+}
+.rave-room .rave-horizon { opacity: 0.45; }
+.rave-laser-fans { position: absolute; inset: 0; overflow: hidden; }
+.rave-laser-fans i {
+  position: absolute;
+  width: 140vmax;
+  height: 140vmax;
+  top: -50vmax;
+  left: -70vmax;
+  opacity: 0.2;
+  background: repeating-conic-gradient(from 20deg, transparent 0deg 9deg, #aaff4680 9.1deg 9.35deg, transparent 9.5deg 19deg);
+  animation: front-row-lasers 12s ease-in-out infinite alternate;
+}
+.rave-laser-fans i:nth-child(2) {
+  left: auto; right: -70vmax;
+  background: repeating-conic-gradient(from -20deg, transparent 0deg 10deg, #34eaff88 10.1deg 10.35deg, transparent 10.5deg 21deg);
+  animation-delay: -6s;
+}
+.rave-laser-fans i:nth-child(3), .rave-laser-fans i:nth-child(4) {
+  top: auto; bottom: -100vmax; opacity: 0.12; animation-duration: 17s;
+}
+.rave-room .topbar {
+  background: #090915e8;
+  border-bottom: 2px solid #d5ff3f;
+  box-shadow: 0 0 30px #d5ff3f18;
+}
+.rave-room .logo { text-transform: uppercase; font-style: italic; }
+.rave-room .logo-disc { color: #090915; background: #d5ff3f; box-shadow: 0 0 30px #d5ff3f55; }
+.front-row-intro { position: relative; padding: 30px 0 10px; }
+.front-row-kicker {
+  display: flex; align-items: center; gap: 9px;
+  font: 800 10px ui-monospace, monospace;
+  letter-spacing: 0.2em; color: #d5ff3f;
+}
+.front-row-kicker > span { width: 7px; height: 7px; background: #d5ff3f; box-shadow: 0 0 15px #d5ff3f; }
+.front-row-intro h1 {
+  margin: 20px 0 24px;
+  font-size: clamp(3.2rem, 7.8vw, 8.7rem);
+  font-weight: 950;
+  font-style: italic;
+  line-height: 0.85;
+  letter-spacing: -0.075em;
+  text-shadow: 4px 4px 0 #f5249c, -2px -2px 0 #34eaff, 0 0 55px #f5249c55;
+}
+.front-row-intro h1 span { color: #d5ff3f; }
+.front-row-meta {
+  display: flex; gap: 16px 30px; flex-wrap: wrap;
+  color: #e0dbef; font: 700 9px ui-monospace, monospace;
+  letter-spacing: 0.12em;
+}
+.front-row-meta span:first-child { background: #d5ff3f; color: #05050c; padding: 5px 8px; }
+.front-row-meta span { align-self: center; }
+.rave-room .room-channel { color: #d5ff3f; }
+.rave-room .room-toggle { border-radius: 5px; background: #090915d9; color: #eee; }
+.rave-room .glass {
+  border-radius: 8px;
+  border-color: #d5ff3f66;
+  background-color: var(--surface);
+  box-shadow: 5px 5px 0 #fa28ad30, -1px -1px 0 #2aeaff30, 0 20px 65px #0008;
+}
+.rave-room .hero {
+  grid-template-columns: minmax(125px, 0.5fr) minmax(0, 1.8fr) minmax(190px, 0.8fr);
+  grid-template-areas: "score body media";
+  min-height: 570px;
+  padding: clamp(24px, 3vw, 46px);
+  border-top: 4px solid #d5ff3f;
+  background: linear-gradient(115deg, #13102be8, #080916bd 50%, #14102ae6);
+  box-shadow: 0 0 55px #d5ff3f16, 8px 8px 0 #f5249c33;
+}
+.rave-room .hero-body { text-align: center; align-items: stretch; gap: 20px; }
+.rave-room .hero-text { align-items: center; }
+.rave-room .hero-title {
+  font-size: clamp(3.3rem, 5.7vw, 6.5rem);
+  font-weight: 950; font-style: italic; text-transform: uppercase;
+  letter-spacing: -0.07em; line-height: 0.92;
+  text-shadow: 3px 3px 0 #f5249c80, -1px -1px 0 #34eaff80;
+  overflow-wrap: anywhere;
+}
+.rave-room .hero .hero-artist { color: #d5ff3f; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.95rem; }
+.rave-room .hero .picked-by { justify-content: center; }
+.rave-room .hero-media { transform: rotate(-8deg); }
+.rave-room .record-scene { filter: drop-shadow(0 0 28px #ff36bc60); }
+.rave-room .deck-caption { letter-spacing: 0.12em; font-size: 8px; }
+.rave-room .stage-format { display: none; }
+.rave-room .stage-eyebrow { justify-content: center; }
+.rave-room .stage-live { border: 1px solid #d5ff3f77; padding: 8px 15px; background: #d5ff3f12; }
+.rave-room .stage-watermark { color: #d5ff3f08; font-style: italic; bottom: 0; }
+.rave-room .hero-score { padding: 20px 0; gap: 16px; }
+.rave-room .hero-score-cap { color: #d5ff3f; font-size: 9px; }
+.rave-room .hero .progress .bar { height: 5px; }
+.rave-room .rate { text-align: left; }
+.rave-room .score { border-radius: 4px; border-color: #d5ff3f44; background: #090915dd; }
+.rave-room .score:hover:not(:disabled) { box-shadow: 0 0 24px #d5ff3f44; }
+.rave-room .btn { border-radius: 5px; font-weight: 800; }
+.rave-room .next-track { border-left: 5px solid #fa28ad; background: #0c0a19e8; border-radius: 5px; }
+.rave-room .next-track-label { color: #ff7bce; }
+.rave-room .panel-head h2 { text-transform: uppercase; font-style: italic; letter-spacing: -0.04em; }
+.rave-room .queue-item { border-radius: 5px; }
+.rave-room .mode-dock-label, .rave-room .mode-caption { color: #d5ff3f; }
+.rave-room .rave-button { --mode-color: #d5ff3f; }
+@media (min-width: 1100px) {
+  .rave-room .grid {
+    grid-template-columns: 1.5fr 1fr;
+    grid-template-areas: "queue request" "side side";
+    gap: 28px;
+  }
+  .rave-room .col-request { position: static; }
+}
+@media (min-width: 820px) and (max-width: 1099px) {
+  .rave-room .hero {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    grid-template-areas: "body media" "body score";
+    gap: 16px;
+  }
+  .rave-room .hero-title { font-size: clamp(3rem, 6vw, 4.5rem); }
+  .rave-room .hero-score .signal-bars, .rave-room .ambient-caption { display: none; }
+}
+@media (max-width: 819px) {
+  .rave-room .shell { gap: 22px; }
+  .front-row-intro { padding-top: 16px; }
+  .front-row-intro h1 { font-size: clamp(2.65rem, 10.3vw, 5rem); text-shadow: 2px 2px 0 #f5249c, -1px -1px 0 #34eaff; }
+  .front-row-kicker { font-size: 8px; letter-spacing: 0.12em; }
+  .front-row-meta { font-size: 7px; gap: 10px 14px; }
+  .rave-room .hero {
+    grid-template-columns: minmax(0, 1fr) 100px;
+    grid-template-areas: "media score" "body body";
+    gap: 22px 10px; padding: 24px 18px; min-height: 0;
+  }
+  .rave-room .hero-media { width: 100%; transform: rotate(-6deg); }
+  .rave-room .record-scene { width: 100%; max-width: 240px; }
+  .rave-room .hero-title { font-size: clamp(2.5rem, 11vw, 4.5rem); }
+  .rave-room .hero-body { gap: 16px; }
+  .rave-room .hero-score { display: flex; flex-direction: column; gap: 10px; }
+  .rave-room .hero-score .ring-wrap { width: 80px; height: 80px; }
+  .rave-room .deck-caption { font-size: 6px; }
+  .rave-room .hero .rate-title { font-size: 0.75rem; }
+}
+@keyframes front-row-lasers {
+  from { transform: rotate(-14deg); }
+  to { transform: rotate(14deg); }
+}
+[data-effects="off"] .rave-laser-fans i { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .rave-laser-fans i { animation: none; }
 }

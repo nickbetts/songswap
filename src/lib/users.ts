@@ -3,6 +3,8 @@ import { promisify } from "util";
 import { cookies } from "next/headers";
 import { getKV, withLock } from "./store";
 import { checkAdminPassword, sessionSecret } from "./auth";
+import { avatarName, avatarUrl } from "./avatar-config";
+import { avatarKey, deleteAvatarData, type AvatarFile } from "./avatar";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -28,6 +30,7 @@ interface UserRec {
   createdAt: number;
   /** New sign-ups need the host's approval before they can queue, rate or vote. Missing = approved. */
   approved?: boolean;
+  avatarVersion?: string;
 }
 
 type Users = Record<string, UserRec>;
@@ -37,6 +40,7 @@ export interface SessionUser {
   name: string;
   mustChange: boolean;
   pending: boolean;
+  avatarUrl?: string;
 }
 
 export class AuthError extends Error {
@@ -167,7 +171,10 @@ export async function currentUser(): Promise<SessionUser | null> {
   if (!t) return null;
   const u = Object.values(await loadUsers()).find((x) => x.id === t.id);
   if (!u || u.ver !== t.ver) return null;
-  return { id: u.id, name: u.name, mustChange: u.mustChange, pending: u.approved === false };
+  return {
+    id: u.id, name: u.name, mustChange: u.mustChange, pending: u.approved === false,
+    avatarUrl: u.avatarVersion ? avatarUrl(u.id, u.avatarVersion) : undefined,
+  };
 }
 
 /**
@@ -315,6 +322,30 @@ export async function listUsers() {
     .sort((a, b) => Number(b.pending) - Number(a.pending) || b.createdAt - a.createdAt);
 }
 
+export async function avatarImages(): Promise<Record<string, string>> {
+  return Object.fromEntries(Object.values(await loadUsers())
+    .filter((u) => u.avatarVersion)
+    .map((u) => [avatarName(u.name), avatarUrl(u.id, u.avatarVersion!)]));
+}
+
+/** The caller id comes only from the authenticated session, never an uploaded field. */
+export async function saveAvatar(userId: string, file: AvatarFile | null) {
+  return withLock("users", async () => {
+    const users = await loadUsers();
+    const user = Object.values(users).find((u) => u.id === userId);
+    if (!user) throw new AuthError(401, "Please log in");
+    if (file) {
+      await getKV().set(avatarKey(user.id), file);
+      user.avatarVersion = file.version;
+    } else {
+      delete user.avatarVersion;
+    }
+    await getKV().set(USERS_KEY, users);
+    if (!file) await getKV().del(avatarKey(user.id));
+    return file ? avatarUrl(user.id, file.version) : null;
+  });
+}
+
 async function updateUser(id: unknown, fn: (users: Users, k: string) => void) {
   if (typeof id !== "string" || !id) throw new AuthError(400, "Invalid user");
   await withLock("users", async () => {
@@ -333,7 +364,9 @@ export const setApproved = (id: unknown, approved: boolean) =>
   });
 
 /** Deletes the account and signs it out everywhere (its played songs and scores stay in history). */
-export const deleteUser = (id: unknown) =>
-  updateUser(id, (users, k) => {
+export const deleteUser = async (id: unknown) => {
+  await updateUser(id, (users, k) => {
     delete users[k];
   });
+  if (typeof id === "string") await deleteAvatarData(id);
+};
