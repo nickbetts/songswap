@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
+import { currentHost } from "./users";
 
 export const ADMIN_COOKIE = "ss_admin";
 
@@ -41,19 +42,27 @@ export function checkAdminPassword(pw: string) {
   return safeEqual(sign(pw), sign(expected));
 }
 
-export function makeAdminToken() {
-  const exp = Date.now() + 1000 * 60 * 60 * 24 * 7;
-  return `${exp}.${sign(`admin:${exp}`)}`;
+/** Host cookie, bound to the host account's id and password version: `id.ver.exp.sig`. */
+export function makeAdminToken(host: { id: string; ver: number }) {
+  const exp = Date.now() + 1000 * 60 * 60 * 12;
+  const body = `${host.id}.${host.ver}.${exp}`;
+  return `${body}.${sign(`admin:v2:${body}`)}`;
 }
 
-function verifyAdminToken(token: string | undefined) {
-  if (!token) return false;
-  const [exp, sig] = token.split(".");
-  if (!exp || !sig || Number(exp) < Date.now()) return false;
-  return safeEqual(sig, sign(`admin:${exp}`));
+function parseAdminToken(token: string | undefined) {
+  const parts = token?.split(".") ?? [];
+  if (parts.length !== 4) return null;
+  const [id, ver, exp, sig] = parts;
+  if (!(Number(exp) > Date.now())) return null;
+  if (!safeEqual(sig, sign(`admin:v2:${id}.${ver}.${exp}`))) return null;
+  return { id, ver: Number(ver) };
 }
 
+/** Host access needs a valid host cookie AND a live login session as the host account. */
 export async function isAdmin() {
   const jar = await cookies();
-  return verifyAdminToken(jar.get(ADMIN_COOKIE)?.value);
+  const t = parseAdminToken(jar.get(ADMIN_COOKIE)?.value);
+  if (!t) return false;
+  const host = await currentHost();
+  return !!host && host.id === t.id && host.ver === t.ver;
 }

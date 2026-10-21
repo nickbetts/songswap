@@ -2,7 +2,7 @@ import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "cr
 import { promisify } from "util";
 import { cookies } from "next/headers";
 import { getKV, withLock } from "./store";
-import { isAdmin, sessionSecret } from "./auth";
+import { sessionSecret } from "./auth";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -14,8 +14,8 @@ const SESSION_MS = 1000 * 60 * 60 * 24 * 30;
 const MAX_FAILS = 8;
 const LOCK_MS = 15 * 60_000;
 
-/** The host's identity when signed in on /admin without a personal account session. */
-export const HOST_PERSON = { id: "host-nick-0001", name: "Nick" };
+/** Only this account may use the host controls (together with ADMIN_PASSWORD). */
+export const HOST_USERNAME = process.env.HOST_USERNAME || "Nick";
 
 interface UserRec {
   id: string;
@@ -150,15 +150,24 @@ export async function currentUser(): Promise<SessionUser | null> {
   return { id: u.id, name: u.name, mustChange: u.mustChange };
 }
 
-/** The person performing a player action: a logged-in user, or the host on /admin. */
+/**
+ * The current session if it belongs to the host account (and the host has set their own
+ * password). Includes `ver` so host cookies die when the host changes password.
+ */
+export async function currentHost(): Promise<{ id: string; ver: number } | null> {
+  const t = parseToken((await cookies()).get(USER_COOKIE)?.value);
+  if (!t) return null;
+  const u = (await loadUsers())[nameKey(HOST_USERNAME)];
+  if (!u || u.id !== t.id || u.ver !== t.ver || u.mustChange) return null;
+  return { id: u.id, ver: u.ver };
+}
+
+/** The logged-in person performing a player action. */
 export async function requireActor(): Promise<{ id: string; name: string }> {
   const u = await currentUser();
-  if (u) {
-    if (u.mustChange) throw new AuthError(403, "Please change your password first");
-    return { id: u.id, name: u.name };
-  }
-  if (await isAdmin()) return HOST_PERSON;
-  throw new AuthError(401, "Please log in");
+  if (!u) throw new AuthError(401, "Please log in");
+  if (u.mustChange) throw new AuthError(403, "Please change your password first");
+  return { id: u.id, name: u.name };
 }
 
 /* ───────────── Account actions ───────────── */
@@ -178,14 +187,14 @@ function validPassword(raw: unknown) {
   return raw;
 }
 
-async function checkRateLimit(key: string) {
+export async function checkRateLimit(key: string) {
   const r = await getKV().get<{ n: number; until: number }>(`ss:rl:${key}`);
   if (r && r.n >= MAX_FAILS && r.until > Date.now()) {
     throw new AuthError(429, "Too many attempts. Try again in a few minutes");
   }
 }
 
-async function recordFail(key: string) {
+export async function recordFail(key: string) {
   const k = `ss:rl:${key}`;
   const r = await getKV().get<{ n: number; until: number }>(k);
   const fresh = !r || r.until < Date.now();
