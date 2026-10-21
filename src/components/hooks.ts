@@ -44,6 +44,14 @@ export interface AppState {
   playerPaused: boolean;
   me: User | null;
   device?: { chosen: string | null; current: string | null } | null;
+  meeting?: {
+    active: true;
+    deviceId: string;
+    deviceName: string;
+    originalVolume: number;
+    quietVolume: number;
+    applied: boolean;
+  } | null;
 }
 
 export interface User {

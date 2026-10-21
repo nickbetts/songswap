@@ -7,6 +7,10 @@ import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./ho
 import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
 import { Avatar, Backdrop, Kbd } from "./ui";
 import { NextTrack, RoomIntro } from "./listening-room";
+import dynamic from "next/dynamic";
+import { RoomModes } from "./room-modes";
+
+const RaveScene = dynamic(() => import("./rave-scene"), { ssr: false });
 
 export function Logo({ spinning = false }: { spinning?: boolean }) {
   return (
@@ -22,17 +26,28 @@ export function Logo({ spinning = false }: { spinning?: boolean }) {
 }
 
 /** Tints the whole UI with a colour pulled from the current album art. */
-export function Themed({ image, children, effects = true, immersive = false }: {
+export function Themed({ image, children, effects = true, immersive = false, rave = false }: {
   image: string | null;
   children: React.ReactNode;
   effects?: boolean;
   immersive?: boolean;
+  rave?: boolean;
 }) {
   const accent = useAccentColor(image);
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   return (
     <MotionConfig reducedMotion={effects ? "user" : "always"}>
-      <div className={`app ${immersive ? "immersive" : ""}`} data-effects={effects ? "on" : "off"} style={{ "--accent": accent } as React.CSSProperties}>
+      <div className={`app ${immersive ? "immersive" : ""} ${rave ? "rave-room" : ""}`} data-effects={effects ? "on" : "off"} style={{ "--accent": rave ? "#df8bff" : accent } as React.CSSProperties}>
         <Backdrop image={image} />
+        {rave && (
+          <div className="rave-world" aria-hidden="true">
+            <div className="rave-aura rave-aura-pink" />
+            <div className="rave-aura rave-aura-blue" />
+            <div className="rave-horizon" />
+            <RaveScene animate={effects && !reducedMotion} />
+            <div className="rave-vignette" />
+          </div>
+        )}
         {children}
       </div>
     </MotionConfig>
@@ -76,6 +91,7 @@ export function Dashboard({
   const [sheet, setSheet] = useState(false);
   const [immersive, setImmersive] = useState(false);
   const [effects, setEffects] = useState(true);
+  const [rave, setRave] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const queuedIds = useMemo(
@@ -124,7 +140,14 @@ export function Dashboard({
   };
 
   return (
-    <Themed image={np?.track.image ?? null} effects={effects} immersive={immersive}>
+    <Themed image={np?.track.image ?? null} effects={effects} immersive={immersive} rave={rave}>
+      <RoomModes
+        rave={rave}
+        onRave={() => setRave((v) => !v)}
+        meeting={state?.meeting}
+        connected={!!state?.connected}
+        refresh={refresh}
+      />
       <header className="topbar">
         <div className="topbar-in">
           <div className="row">
@@ -181,7 +204,7 @@ export function Dashboard({
         <RoomIntro queue={queue} played={state?.history.length ?? 0} />
 
         <div className="room-toolbar">
-          <span className="room-channel"><span /> THE LISTENING ROOM <span className="room-channel-line" /></span>
+          <span className="room-channel"><span /> {rave ? "THE AFTERHOURS" : "THE LISTENING ROOM"} <span className="room-channel-line" /></span>
           <div className="row gap-sm">
             <button className="room-toggle" aria-pressed={effects} onClick={() => setEffects((v) => !v)} title="Toggle decorative motion">
               <Sparkles size={15} /> <span>Motion {effects ? "on" : "off"}</span>

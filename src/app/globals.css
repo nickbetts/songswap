@@ -1540,6 +1540,211 @@ li.qrow {
 .pending-note {
   border-color: rgba(255, 213, 74, 0.35);
 }
+
+/* Room FX stays outside the content and below sheets/dialogs. */
+.mode-dock {
+  position: fixed;
+  z-index: 45;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: 98px;
+  display: grid;
+  gap: 10px;
+}
+.mode-dock-label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #b2a8c8;
+}
+.mode-button {
+  --mode-color: #79e7c7;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 108px;
+  padding: 15px 5px 12px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 22px;
+  color: #eae5f4;
+  background: linear-gradient(145deg, rgba(43, 39, 57, 0.96), rgba(12, 13, 20, 0.96));
+  box-shadow: 0 10px 35px #0008, inset 0 1px 0 #ffffff15;
+  backdrop-filter: blur(20px);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+}
+.rave-button { --mode-color: #ec85ff; }
+.mode-button:hover:not(:disabled), .mode-button:focus-visible {
+  border-color: var(--mode-color);
+  transform: translateY(-3px);
+  outline: 2px solid var(--mode-color);
+  outline-offset: 3px;
+}
+.mode-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.mode-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: var(--mode-color);
+  background: color-mix(in srgb, var(--mode-color) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mode-color) 25%, transparent);
+}
+.mode-copy strong {
+  display: block;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.mode-copy small {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 32px;
+  width: max-content;
+  max-width: 190px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #191421;
+  border: 1px solid #ffffff25;
+  font-size: 11px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(6px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.mode-button:hover .mode-copy small, .mode-button:focus-visible .mode-copy small {
+  opacity: 1;
+  transform: none;
+}
+.mode-switch {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 19px;
+  height: 10px;
+  border-radius: 20px;
+  background: #ffffff20;
+  padding: 2px;
+}
+.mode-switch > span {
+  display: block;
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: #aaa4b5;
+  transition: transform 0.25s, background 0.25s;
+}
+.mode-button.is-active {
+  border-color: color-mix(in srgb, var(--mode-color) 65%, transparent);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--mode-color) 16%, transparent), inset 0 0 24px color-mix(in srgb, var(--mode-color) 8%, transparent);
+}
+.mode-button.is-active .mode-icon {
+  box-shadow: 0 0 24px color-mix(in srgb, var(--mode-color) 30%, transparent);
+  background: color-mix(in srgb, var(--mode-color) 18%, transparent);
+}
+.mode-button.is-active .mode-switch { background: var(--mode-color); }
+.mode-button.is-active .mode-switch > span { transform: translateX(9px); background: #15101e; }
+.mode-caption {
+  text-align: center;
+  font-size: 7px;
+  font-weight: 800;
+  line-height: 1.7;
+  letter-spacing: 0.11em;
+  color: #df9eff;
+}
+@media (min-width: 820px) and (max-width: 1650px) {
+  .app:has(.mode-dock) .shell { margin-right: 112px; }
+}
+@media (max-width: 819px) {
+  .mode-dock {
+    width: 72px;
+    right: 10px;
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    gap: 7px;
+  }
+  .mode-dock-label, .mode-caption { display: none; }
+  .mode-button { min-height: 83px; border-radius: 19px; gap: 5px; padding: 12px 3px 10px; }
+  .mode-icon { width: 34px; height: 34px; }
+  .mode-copy strong { font-size: 9px; }
+  .mode-switch { top: 7px; right: 7px; transform: scale(0.8); }
+  .mode-copy small { max-width: 150px; }
+}
+
+/* Afterhours: real 3D behind the glass, with a neon fallback if WebGL is unavailable. */
+.rave-room {
+  --surface: rgba(16, 10, 32, 0.82);
+  --line: rgba(178, 126, 255, 0.22);
+  --line-strong: rgba(209, 162, 255, 0.4);
+}
+.rave-room .backdrop { opacity: 0.25; }
+.rave-world {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 110%, #441064 0%, #150a28 40%, #070911 85%);
+}
+.rave-canvas, .rave-canvas canvas, .rave-vignette { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rave-vignette { background: radial-gradient(ellipse at 50% 40%, transparent 30%, #03040a99 100%); }
+.rave-aura {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  filter: blur(60px);
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: rave-drift 22s ease-in-out infinite alternate;
+}
+.rave-aura-pink { background: radial-gradient(circle, #b50b9a, transparent 65%); top: -30%; left: -35%; }
+.rave-aura-blue {
+  background: radial-gradient(circle, #075bd5, transparent 65%);
+  right: -30%;
+  bottom: -30%;
+  animation-delay: -11s;
+}
+.rave-horizon {
+  position: absolute;
+  top: 55%;
+  left: -30%;
+  width: 160%;
+  height: 65%;
+  opacity: 0.2;
+  background-image: linear-gradient(#ae40ff66 1px, transparent 1px), linear-gradient(90deg, #39dfff66 1px, transparent 1px);
+  background-size: 70px 70px;
+  transform: perspective(500px) rotateX(65deg);
+  transform-origin: top;
+  mask-image: linear-gradient(transparent, #000 30%, transparent);
+}
+.rave-room .glass {
+  border-color: #b684ff36;
+  box-shadow: 0 1px 0 #f0cfff12 inset, 0 24px 80px -30px #000b, 0 0 35px -20px #b751ff55;
+}
+.rave-room .hero {
+  background: linear-gradient(125deg, #24102beb, #10142be0 58%, #10121ef2);
+  border-color: #df96ff55;
+}
+.rave-room .room-channel { color: #df9eff; }
+.rave-room .topbar { border-bottom-color: #ba85ff44; }
+.rave-room .logo-disc { box-shadow: 0 0 24px #be69ff44; }
+@keyframes rave-drift {
+  from { transform: translate3d(-4%, 2%, 0) scale(0.95); }
+  to { transform: translate3d(16%, -10%, 0) scale(1.15); }
+}
+[data-effects="off"] .rave-aura { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .rave-aura { animation: none; }
+  .mode-button, .mode-switch > span { transition: none; }
+  .mode-button:hover:not(:disabled), .mode-button:focus-visible { transform: none; }
+}
 .danger-zone {
   display: flex;
   align-items: center;

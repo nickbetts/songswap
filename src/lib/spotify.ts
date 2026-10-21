@@ -41,6 +41,8 @@ export interface Device {
   name: string;
   type: string;
   isActive: boolean;
+  volumePercent: number | null;
+  supportsVolume: boolean;
 }
 
 
@@ -189,9 +191,23 @@ export async function getPlayback(): Promise<Playback | null> {
 
 export async function listDevices(): Promise<Device[]> {
   const j = await api("/me/player/devices");
-  return ((j?.devices ?? []) as { id: string | null; name: string; type: string; is_active: boolean; is_restricted: boolean }[])
+  return ((j?.devices ?? []) as {
+    id: string | null; name: string; type: string; is_active: boolean; is_restricted: boolean;
+    volume_percent: number | null; supports_volume?: boolean;
+  }[])
     .filter((d) => d.id && !d.is_restricted)
-    .map((d) => ({ id: d.id!, name: d.name, type: d.type, isActive: d.is_active }));
+    .map((d) => ({
+      id: d.id!, name: d.name, type: d.type, isActive: d.is_active,
+      volumePercent: d.volume_percent ?? null, supportsVolume: d.supports_volume !== false,
+    }));
+}
+
+/** Volume must target the saved device, never a different device Spotify happens to make active. */
+export async function setDeviceVolume(deviceId: string, percent: number) {
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
+    throw new SpotifyError(400, "Volume must be an integer from 0 to 100");
+  }
+  await api(withDevice(`/me/player/volume?volume_percent=${percent}`, deviceId), { method: "PUT" });
 }
 
 /** The device the host picked to play through (null = let Spotify decide). */

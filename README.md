@@ -12,6 +12,8 @@ Guests open your link, sign up with a username and password, add songs to a shar
 - The app keeps its own queue and feeds the next song into Spotify's queue ~25s before the current one ends (or starts it if the player is idle). This runs whenever anyone has the page open, so keep the host page or a guest tab open during the session.
 - Leaderboard ranks people by the average rating of their songs.
 - **Listening room**: album-colour lighting, a spinning record deck with a track-progress orbit, and a preview of the next pick. **Focus mode** hides the panels for an immersive player (Escape exits); requests and host controls still work. **Motion** pauses the decorative effects, and system reduced-motion preferences are respected. The ambient bars are decorative, not an audio analyser.
+- **Floating Room FX controls**: the host's **Meeting mode** saves the selected Spotify device's current volume, lowers it by 75% (to a quarter, rounded to Spotify's integer percentage), and restores the saved volume when switched off. The restore point survives page refreshes and repeated toggles don't compound the reduction. Turn it off before switching devices; disconnecting Spotify restores the volume first. Unsupported remote-volume devices show an error instead of guessing. If a command fails, the restore point stays available for a retry.
+- **Rave mode** is local to each viewer: a lazy-loaded Three.js mirror ball, neon portals, light beams, particles and a perspective dance floor behind the tinted glass cards. No strobing or audio analysis. **Motion off** and system reduced-motion stop the animation; hidden tabs stop rendering, resolution is capped for mobile, and devices without WebGL keep the neon CSS backdrop with a notification.
 
 ## Setup
 
