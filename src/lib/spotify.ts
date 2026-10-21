@@ -1,6 +1,7 @@
 import { getKV, withLock } from "./store";
 
 const KEY = "ss:spotify";
+const DEVICE_KEY = "ss:device";
 export const SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
@@ -30,13 +31,26 @@ export interface Playback {
   progressMs: number;
   trackId: string | null;
   durationMs: number;
+  deviceId?: string | null;
+  deviceName?: string | null;
 }
+
+export interface Device {
+  id: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+}
+
 
 export class SpotifyError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }
 }
+
+/** Raised when the host's chosen playback device can't be reached. */
+export class DeviceUnavailableError extends SpotifyError {}
 
 function basicAuth() {
   const id = process.env.SPOTIFY_CLIENT_ID;
@@ -166,7 +180,36 @@ export async function getPlayback(): Promise<Playback | null> {
     progressMs: j.progress_ms ?? 0,
     trackId: j.item.id ?? null,
     durationMs: j.item.duration_ms ?? 0,
+    deviceId: j.device?.id ?? null,
+    deviceName: j.device?.name ?? null,
   };
+}
+
+export async function listDevices(): Promise<Device[]> {
+  const j = await api("/me/player/devices");
+  return ((j?.devices ?? []) as { id: string | null; name: string; type: string; is_active: boolean; is_restricted: boolean }[])
+    .filter((d) => d.id && !d.is_restricted)
+    .map((d) => ({ id: d.id!, name: d.name, type: d.type, isActive: d.is_active }));
+}
+
+/** The device the host picked to play through (null = let Spotify decide). */
+export async function getChosenDevice() {
+  return getKV().get<{ id: string; name: string }>(DEVICE_KEY);
+}
+
+/** Saves the host's device choice and moves playback onto it. */
+export async function chooseDevice(id: string | null) {
+  if (!id) {
+    await getKV().del(DEVICE_KEY);
+    return;
+  }
+  const d = (await listDevices()).find((x) => x.id === id);
+  if (!d) throw new SpotifyError(404, "That device isn't available any more. Refresh the list");
+  await getKV().set(DEVICE_KEY, { id: d.id, name: d.name });
+  if (!d.isActive) {
+    const pb = await getPlayback().catch(() => null);
+    await api("/me/player", { method: "PUT", json: { device_ids: [d.id], play: !!pb?.isPlaying } });
+  }
 }
 
 /** Picks a usable device when Spotify reports no active one (e.g. the desktop app is open but idle). */
@@ -178,16 +221,34 @@ async function pickDeviceId(): Promise<string | null> {
   return d?.id ?? null;
 }
 
-/** Runs a player command; on "no active device" retries targeting an available device, which also wakes it up. */
+const withDevice = (path: string, id: string) => `${path}${path.includes("?") ? "&" : "?"}device_id=${encodeURIComponent(id)}`;
+
+/**
+ * Runs a player command. If the host chose a device, always target it (this also wakes it up and
+ * moves playback there). Otherwise use Spotify's active device, falling back to any available one.
+ */
 async function player(path: string, init: RequestInit & { json?: unknown }) {
+  const chosen = await getChosenDevice();
+  if (chosen) {
+    try {
+      return await api(withDevice(path, chosen.id), init);
+    } catch (e) {
+      if (e instanceof SpotifyError && e.status === 404) {
+        throw new DeviceUnavailableError(
+          404,
+          `Can't reach “${chosen.name}”. Make sure Spotify is open on it, or pick another device on the host page.`,
+        );
+      }
+      throw e;
+    }
+  }
   try {
     return await api(path, init);
   } catch (e) {
     if (!(e instanceof SpotifyError) || e.status !== 404) throw e;
     const id = await pickDeviceId();
     if (!id) throw e;
-    const sep = path.includes("?") ? "&" : "?";
-    return api(`${path}${sep}device_id=${encodeURIComponent(id)}`, init);
+    return api(withDevice(path, id), init);
   }
 }
 

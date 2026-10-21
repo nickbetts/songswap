@@ -7,6 +7,7 @@ import { ArrowLeft, Link2, Lock, LogOut, Pause, Play, PlayCircle, RotateCcw, Shu
 import { Dashboard, Logo, Themed } from "@/components/shell";
 import { postJSON, useAppState, type User } from "@/components/hooks";
 import { Spinner } from "@/components/ui";
+import { DevicePicker } from "@/components/device-picker";
 
 const HOST: User = { id: "host-nick-0001", name: "Nick" };
 
@@ -135,6 +136,7 @@ export default function Admin() {
                   ? "Keep Spotify open on a device (Premium). Requests are fed in near the end of each track."
                   : "Connect the Spotify account you want to play through."}
               </div>
+              {state?.connected && <DevicePicker device={state.device ?? null} onChanged={refresh} />}
             </div>
           </div>
           <div className="row wrap-row gap-sm">

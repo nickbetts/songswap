@@ -43,6 +43,7 @@ export interface AppState {
   leaderboard: { name: string; average: number; songs: number }[];
   playerPaused: boolean;
   me: User | null;
+  device?: { chosen: string | null; current: string | null } | null;
 }
 
 export interface User {

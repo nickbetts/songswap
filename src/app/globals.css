@@ -1992,3 +1992,23 @@ li.qrow {
   color: #ff6b6b;
   background: rgba(255, 107, 107, 0.15);
 }
+.device-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.device-select {
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.device-picker .warn {
+  color: #ffb547;
+}

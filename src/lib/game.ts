@@ -368,7 +368,7 @@ export async function sync() {
         }
       } catch (e) {
         s.error =
-          e instanceof sp.SpotifyError && e.status === 404
+          e instanceof sp.SpotifyError && e.status === 404 && !(e instanceof sp.DeviceUnavailableError)
             ? "No Spotify device found. Make sure the Spotify app is open and logged in (and Private Session is off)."
             : e instanceof Error
               ? e.message
@@ -398,8 +398,7 @@ function publicEntry(e: Entry, userId: string | null, showRatings: boolean, admi
 }
 
 export async function publicState(userId: string | null, admin: boolean) {
-  const auth = await sp.getAuth();
-  const s = await load();
+  const [auth, s, device] = await Promise.all([sp.getAuth(), load(), admin ? sp.getChosenDevice() : null]);
   const all = [...(s.nowPlaying ? [s.nowPlaying] : []), ...s.history];
 
   const byPerson = new Map<string, { name: string; sum: number; rated: number; songs: number }>();
@@ -424,6 +423,7 @@ export async function publicState(userId: string | null, admin: boolean) {
   return {
     connected: !!auth,
     spotifyName: admin ? (auth?.displayName ?? null) : null,
+    device: admin ? { chosen: device?.name ?? null, current: s.playback?.deviceName ?? null } : null,
     error: s.error,
     nowPlaying: np
       ? {

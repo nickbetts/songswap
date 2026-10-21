@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { assertSameOrigin, fail } from "@/lib/http";
 import { shuffleQueue, deleteHistoryEntry, deleteRating, playNow, playerControl, removeEntry, reorderQueue, resetAll } from "@/lib/game";
-import { clearAuth } from "@/lib/spotify";
+import { chooseDevice, clearAuth } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,9 @@ export async function POST(req: Request) {
         break;
       case "reset":
         await resetAll();
+        break;
+      case "setDevice":
+        await chooseDevice(typeof body.deviceId === "string" && body.deviceId ? body.deviceId : null);
         break;
       case "disconnect":
         await clearAuth();
