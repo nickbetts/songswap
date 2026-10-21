@@ -43,6 +43,18 @@ export default function Home() {
         loadError={loadError}
         refresh={refresh}
         onEditName={() => setMenu(true)}
+        top={
+          (state?.me?.pending ?? user.pending) && (
+            <section className="hostbar glass pending-note">
+              <div className="grow">
+                <div className="title">Waiting for the host to approve you</div>
+                <div className="sub">
+                  You can watch and listen now. Adding songs, rating and voting unlock once Nick approves your account.
+                </div>
+              </div>
+            </section>
+          )
+        }
         bottom={
           <footer className="foot">
             <a href="/admin">Host login</a>
@@ -52,7 +64,13 @@ export default function Home() {
       <AnimatePresence>
         {menu && (
           <>
-            <motion.div className="scrim" onClick={() => setMenu(false)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+            <motion.div
+              className="scrim"
+              onClick={() => setMenu(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
             <div className="dialog-wrap">
               <motion.div
                 className="dialog glass"
@@ -181,7 +199,14 @@ function AuthForm({ onJoin }: { onJoin: (user: User) => void }) {
     <form className="join-form" onSubmit={submit}>
       <div className="auth-tabs" role="tablist">
         {(["login", "register"] as const).map((m) => (
-          <button key={m} type="button" role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => (setMode(m), setErr(null))}>
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={mode === m}
+            className={mode === m ? "on" : ""}
+            onClick={() => (setMode(m), setErr(null))}
+          >
             {m === "login" ? "Log in" : "Sign up"}
           </button>
         ))}

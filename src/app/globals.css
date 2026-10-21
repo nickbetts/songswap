@@ -1499,6 +1499,47 @@ li.qrow {
 .hostbar .sub {
   white-space: normal;
 }
+.people {
+  padding: 14px 18px;
+  display: grid;
+  gap: 12px;
+}
+.people .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.people .sub {
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+.pending-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffd54a, #ff8a3d);
+  color: #000;
+}
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.people-list li {
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.pending-note {
+  border-color: rgba(255, 213, 74, 0.35);
+}
 .danger-zone {
   display: flex;
   align-items: center;

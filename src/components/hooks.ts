@@ -50,6 +50,7 @@ export interface User {
   id: string;
   name: string;
   mustChange?: boolean;
+  pending?: boolean;
 }
 
 /** The logged-in account (from the server session cookie). `undefined` while loading. */

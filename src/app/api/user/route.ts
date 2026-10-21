@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertSameOrigin, fail } from "@/lib/http";
+import { assertSameOrigin, clientIp, fail } from "@/lib/http";
 import { USER_COOKIE, changePassword, currentUser, login, register, sessionCookie } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +19,14 @@ export async function POST(req: Request) {
     }
     const rec =
       body?.action === "register"
-        ? await register(body.username, body.password)
+        ? await register(body.username, body.password, clientIp(req), body.adminPassword)
         : body?.action === "login"
-          ? await login(body.username, body.password)
+          ? await login(body.username, body.password, clientIp(req))
           : body?.action === "changePassword"
             ? await changePassword(body.current, body.password)
             : null;
     if (!rec) return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-    const res = NextResponse.json({ user: { id: rec.id, name: rec.name, mustChange: rec.mustChange } });
+    const res = NextResponse.json({ user: { id: rec.id, name: rec.name, mustChange: rec.mustChange, pending: rec.approved === false } });
     res.cookies.set(sessionCookie(rec));
     return res;
   } catch (e) {

@@ -24,6 +24,11 @@ export function redirectUri(req: Request) {
   return process.env.SPOTIFY_REDIRECT_URI || `${origin(req)}/api/auth/callback`;
 }
 
+/** The caller's IP (Vercel sets x-real-ip / x-forwarded-for itself, so clients can't spoof it there). */
+export function clientIp(req: Request) {
+  return (req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for")?.split(",")[0] || "local").trim().slice(0, 64);
+}
+
 /** Throws unless a state-changing request came from our own site. */
 export function assertSameOrigin(req: Request) {
   if (!sameOrigin(req)) throw new AuthError(403, "Cross-site request blocked");

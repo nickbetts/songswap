@@ -5,10 +5,10 @@ import { currentHost } from "./users";
 export const ADMIN_COOKIE = "ss_admin";
 
 export function sessionSecret() {
-  const s = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD;
-  if (s) return s;
-  // A guessable fallback would let anyone forge admin/user sessions.
-  if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET is not set on the server");
+  // Never fall back to ADMIN_PASSWORD: signed cookies would let anyone crack it offline.
+  const s = process.env.SESSION_SECRET;
+  if (s && s.length >= 16) return s;
+  if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET is missing or too short on the server");
   return "dev-secret";
 }
 

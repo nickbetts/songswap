@@ -21,6 +21,7 @@ import { Dashboard, Logo, Themed } from "@/components/shell";
 import { postJSON, useAppState } from "@/components/hooks";
 import { Spinner } from "@/components/ui";
 import { DevicePicker } from "@/components/device-picker";
+import { PeoplePanel } from "@/components/people-panel";
 
 /** Rendered by the server page, which decides `admin` from the cookies; the API re-checks every call. */
 export function HostConsole({ admin, isHost, hostName }: { admin: boolean; isHost: boolean; hostName: string }) {
@@ -142,40 +143,43 @@ export function HostConsole({ admin, isHost, hostName }: { admin: boolean; isHos
         </button>
       }
       top={
-        <section className="hostbar glass">
-          <div className="row grow">
-            <span className={`conn-dot ${state?.connected ? "on" : ""}`} />
-            <div className="grow">
-              <div className="title">
-                {state?.connected
-                  ? `Spotify connected${state.spotifyName ? ` as ${state.spotifyName}` : ""}`
-                  : "Spotify not connected"}
+        <>
+          <section className="hostbar glass">
+            <div className="row grow">
+              <span className={`conn-dot ${state?.connected ? "on" : ""}`} />
+              <div className="grow">
+                <div className="title">
+                  {state?.connected
+                    ? `Spotify connected${state.spotifyName ? ` as ${state.spotifyName}` : ""}`
+                    : "Spotify not connected"}
+                </div>
+                <div className="sub">
+                  {state?.connected
+                    ? "Keep Spotify open on a device (Premium). Requests are fed in near the end of each track."
+                    : "Connect the Spotify account you want to play through."}
+                </div>
+                {state?.connected && <DevicePicker device={state.device ?? null} onChanged={refresh} />}
               </div>
-              <div className="sub">
-                {state?.connected
-                  ? "Keep Spotify open on a device (Premium). Requests are fed in near the end of each track."
-                  : "Connect the Spotify account you want to play through."}
-              </div>
-              {state?.connected && <DevicePicker device={state.device ?? null} onChanged={refresh} />}
             </div>
-          </div>
-          <div className="row wrap-row gap-sm">
-            {state?.connected ? (
-              <>
-                <a className="btn ghost sm" href="/api/auth/login">
-                  <Link2 size={15} /> Reconnect
+            <div className="row wrap-row gap-sm">
+              {state?.connected ? (
+                <>
+                  <a className="btn ghost sm" href="/api/auth/login">
+                    <Link2 size={15} /> Reconnect
+                  </a>
+                  <button className="btn ghost sm" onClick={() => act("disconnect", {}, "Disconnect Spotify?")}>
+                    <Unplug size={15} /> Disconnect
+                  </button>
+                </>
+              ) : (
+                <a className="btn btn-cta" href="/api/auth/login">
+                  <Link2 size={16} /> Connect Spotify
                 </a>
-                <button className="btn ghost sm" onClick={() => act("disconnect", {}, "Disconnect Spotify?")}>
-                  <Unplug size={15} /> Disconnect
-                </button>
-              </>
-            ) : (
-              <a className="btn btn-cta" href="/api/auth/login">
-                <Link2 size={16} /> Connect Spotify
-              </a>
-            )}
-          </div>
-        </section>
+              )}
+            </div>
+          </section>
+          <PeoplePanel />
+        </>
       }
       heroControls={
         state?.connected && (

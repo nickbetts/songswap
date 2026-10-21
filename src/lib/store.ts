@@ -6,6 +6,8 @@ export interface KV {
   del(key: string): Promise<void>;
   /** Set only if absent, with a TTL in ms. Returns true if the key was set. */
   setNX(key: string, value: string, ttlMs: number): Promise<boolean>;
+  /** Atomically increments a counter that resets `ttlMs` after its first hit. Returns the new count. */
+  incr(key: string, ttlMs: number): Promise<number>;
 }
 
 class MemoryKV implements KV {
@@ -35,6 +37,12 @@ class MemoryKV implements KV {
     if (this.live(key)) return false;
     this.data.set(key, { v: value, exp: Date.now() + ttlMs });
     return true;
+  }
+  async incr(key: string, ttlMs: number) {
+    const e = this.live(key);
+    const n = (typeof e?.v === "number" ? e.v : 0) + 1;
+    this.data.set(key, { v: n, exp: e?.exp ?? Date.now() + ttlMs });
+    return n;
   }
 }
 
@@ -80,6 +88,18 @@ class NeonKV implements KV {
         WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()
       RETURNING key`;
     return rows.length > 0;
+  }
+  async incr(key: string, ttlMs: number) {
+    await this.init();
+    const rows = await this.sql`INSERT INTO kv (key, value, expires_at)
+      VALUES (${key}, '1'::jsonb, now() + (${ttlMs} * interval '1 millisecond'))
+      ON CONFLICT (key) DO UPDATE SET
+        value = CASE WHEN kv.expires_at IS NULL OR kv.expires_at <= now() THEN '1'::jsonb
+                     ELSE to_jsonb((kv.value #>> '{}')::int + 1) END,
+        expires_at = CASE WHEN kv.expires_at IS NULL OR kv.expires_at <= now() THEN EXCLUDED.expires_at
+                          ELSE kv.expires_at END
+      RETURNING value`;
+    return Number(rows[0].value);
   }
 }
 

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { ADMIN_COOKIE, checkAdminPassword, isAdmin, makeAdminToken } from "@/lib/auth";
-import { assertSameOrigin, fail } from "@/lib/http";
-import { AuthError, HOST_USERNAME, checkRateLimit, currentHost, recordFail } from "@/lib/users";
-import { getKV } from "@/lib/store";
+import { assertSameOrigin, clientIp, fail } from "@/lib/http";
+import { AuthError, HOST_USERNAME, clearAttempts, currentHost, limitAttempts } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +24,13 @@ export async function POST(req: Request) {
     const host = await currentHost();
     if (!host) throw new AuthError(403, `Host controls are only for ${HOST_USERNAME}. Log in as ${HOST_USERNAME} first.`);
     if (!process.env.ADMIN_PASSWORD) throw new AuthError(500, "ADMIN_PASSWORD is not set on the server");
-    await checkRateLimit(RL_KEY);
+    await limitAttempts(`${RL_KEY}:${clientIp(req)}`);
+    await limitAttempts(RL_KEY);
     if (typeof body?.password !== "string" || !checkAdminPassword(body.password)) {
-      await recordFail(RL_KEY);
+      await new Promise((r) => setTimeout(r, 500));
       throw new AuthError(401, "Wrong password");
     }
-    await getKV().del(`ss:rl:${RL_KEY}`);
+    await clearAttempts(RL_KEY);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(ADMIN_COOKIE, makeAdminToken(host), {
       httpOnly: true,

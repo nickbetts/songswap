@@ -3,6 +3,7 @@ import { isAdmin } from "@/lib/auth";
 import { assertSameOrigin, fail } from "@/lib/http";
 import { shuffleQueue, deleteHistoryEntry, deleteRating, playNow, playerControl, removeEntry, reorderQueue, resetAll } from "@/lib/game";
 import { chooseDevice, clearAuth } from "@/lib/spotify";
+import { deleteUser, setApproved } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,15 @@ export async function POST(req: Request) {
         break;
       case "setDevice":
         await chooseDevice(typeof body.deviceId === "string" && body.deviceId ? body.deviceId : null);
+        break;
+      case "approveUser":
+        await setApproved(body.userId, true);
+        break;
+      case "blockUser":
+        await setApproved(body.userId, false);
+        break;
+      case "deleteUser":
+        await deleteUser(body.userId);
         break;
       case "disconnect":
         await clearAuth();
