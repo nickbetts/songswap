@@ -35,6 +35,7 @@ import {
   useProgress,
 } from "./hooks";
 import { Art, Avatar, Equalizer, Kbd, ScoreBadge, ScoreRing, Spinner } from "./ui";
+import { RecordDeck, SignalBars } from "./listening-room";
 
 export { Art } from "./ui";
 
@@ -66,6 +67,7 @@ export function NowPlayingHero({
   onRequest,
   canRequest = true,
   controls,
+  effects = true,
 }: {
   np: NowPlaying | null;
   receivedAt: number;
@@ -74,6 +76,7 @@ export function NowPlayingHero({
   onRequest: () => void;
   canRequest?: boolean;
   controls?: React.ReactNode;
+  effects?: boolean;
 }) {
   const progress = useProgress(np, receivedAt);
   const [pending, setPending] = useState<number | null>(null);
@@ -84,16 +87,14 @@ export function NowPlayingHero({
     return (
       <section className="hero glass hero-empty">
         <div className="hero-media">
-          <div className="cover-stack idle">
-            <div className="vinyl spin slow" />
-          </div>
+          <RecordDeck image={null} playing={false} effects={effects} />
         </div>
         <div className="hero-body">
           <div className="eyebrow">
             <Equalizer playing={false} /> Now playing
           </div>
-          <h2 className="hero-title">Silence… for now</h2>
-          <p className="hero-artist">Nothing from the queue is playing yet. Be the one who starts the party.</p>
+          <h2 className="hero-title">Every great night<br />starts with a song.</h2>
+          <p className="hero-artist">The deck is yours. Find something worth sharing.</p>
           <div>
             <button className="btn btn-lg" onClick={onRequest} disabled={!canRequest}>
               <Plus size={20} strokeWidth={2.6} /> Request the first song
@@ -125,28 +126,28 @@ export function NowPlayingHero({
   }
 
   return (
-    <section className="hero glass">
+    <section className={`hero glass ${np.isPlaying ? "is-playing" : ""}`}>
+      <div className="stage-watermark" aria-hidden="true">ON AIR</div>
       <div className="hero-media">
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={np.id}
-            className="cover-stack"
+            className="deck-transition"
             initial={{ opacity: 0, scale: 0.8, rotate: -6, x: 40 }}
             animate={{ opacity: 1, scale: 1, rotate: 0, x: 0 }}
             exit={{ opacity: 0, scale: 0.85, x: -60 }}
             transition={{ type: "spring", stiffness: 120, damping: 18 }}
           >
-            <div className={`vinyl ${np.isPlaying ? "spin" : ""}`}>
-              {np.track.image && <div className="vinyl-label" style={{ backgroundImage: `url(${np.track.image})` }} />}
-            </div>
-            <Art src={np.track.image} size={300} className="cover" />
+            <RecordDeck image={np.track.image} playing={np.isPlaying} progress={pct} effects={effects} />
           </motion.div>
         </AnimatePresence>
+        <div className="deck-caption"><span className={`dot ${np.isPlaying ? "live" : ""}`} /> SIDE A <span>THE PEOPLE&apos;S SELECTION</span></div>
       </div>
 
       <div className="hero-body">
-        <div className="eyebrow">
-          <Equalizer playing={np.isPlaying} /> {np.isPlaying ? "Now playing" : "Paused"}
+        <div className="stage-eyebrow">
+          <span className="stage-live"><Equalizer playing={np.isPlaying} /> {np.isPlaying ? "ON THE DECK" : "ON PAUSE"}</span>
+          <span className="stage-format">SPOTIFY / SHARED SESSION</span>
         </div>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -171,7 +172,7 @@ export function NowPlayingHero({
           </motion.div>
         </AnimatePresence>
 
-        <div className="progress">
+        <div className="progress" role="progressbar" aria-label="Track progress" aria-valuemin={0} aria-valuemax={Math.round(np.track.durationMs / 1000)} aria-valuenow={Math.round(progress / 1000)} aria-valuetext={`${fmtTime(progress)} of ${fmtTime(np.track.durationMs)}`}>
           <div className="bar">
             <div className="fill" style={{ width: `${pct}%` }}>
               <span className="knob" />
@@ -201,6 +202,8 @@ export function NowPlayingHero({
       <div className="hero-score">
         <ScoreRing value={np.average} count={np.ratingCount} />
         <span className="hero-score-cap">Crowd score</span>
+        <SignalBars playing={np.isPlaying && effects} />
+        <span className="ambient-caption">AMBIENT VISUAL</span>
       </div>
     </section>
   );
@@ -638,7 +641,7 @@ export function QueuePanel({
             </h2>
             <p className="panel-sub">
               {queue.length
-                ? `${fmtDuration(total)} of music lined up${onReorder && queue.length > 1 ? " · drag to reorder" : ""}`
+                ? `${fmtDuration(total)} lined up · one song per person, in turns${onReorder && queue.length > 1 ? " · drag to change turn order" : ""}`
                 : "Nothing queued"}
             </p>
           </div>

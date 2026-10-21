@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, Disc3, Plus, Radio } from "lucide-react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { AlertTriangle, Disc3, Expand, Minimize2, Plus, Radio, Sparkles } from "lucide-react";
 import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./hooks";
 import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
 import { Avatar, Backdrop, Kbd } from "./ui";
+import { NextTrack, RoomIntro } from "./listening-room";
 
 export function Logo({ spinning = false }: { spinning?: boolean }) {
   return (
@@ -21,13 +22,20 @@ export function Logo({ spinning = false }: { spinning?: boolean }) {
 }
 
 /** Tints the whole UI with a colour pulled from the current album art. */
-export function Themed({ image, children }: { image: string | null; children: React.ReactNode }) {
+export function Themed({ image, children, effects = true, immersive = false }: {
+  image: string | null;
+  children: React.ReactNode;
+  effects?: boolean;
+  immersive?: boolean;
+}) {
   const accent = useAccentColor(image);
   return (
-    <div className="app" style={{ "--accent": accent } as React.CSSProperties}>
-      <Backdrop image={image} />
-      {children}
-    </div>
+    <MotionConfig reducedMotion={effects ? "user" : "always"}>
+      <div className={`app ${immersive ? "immersive" : ""}`} data-effects={effects ? "on" : "off"} style={{ "--accent": accent } as React.CSSProperties}>
+        <Backdrop image={image} />
+        {children}
+      </div>
+    </MotionConfig>
   );
 }
 
@@ -66,6 +74,8 @@ export function Dashboard({
   const queue = state?.queue ?? [];
   const wide = useMediaQuery("(min-width: 820px)");
   const [sheet, setSheet] = useState(false);
+  const [immersive, setImmersive] = useState(false);
+  const [effects, setEffects] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const queuedIds = useMemo(
@@ -76,14 +86,14 @@ export function Dashboard({
   const canRequest = !!state?.connected;
 
   const openRequest = useCallback(() => {
-    if (wide) {
+    if (wide && !immersive) {
       const el = inputRef.current;
       el?.closest(".request")?.scrollIntoView({ behavior: "smooth", block: "center" });
       setTimeout(() => el?.focus({ preventScroll: true }), 250);
     } else {
       setSheet(true);
     }
-  }, [wide]);
+  }, [wide, immersive]);
 
   useEffect(() => {
     if (wide) setSheet(false);
@@ -91,6 +101,10 @@ export function Dashboard({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setImmersive(false);
+        return;
+      }
       const t = e.target as HTMLElement;
       if (e.key !== "/" || e.metaKey || e.ctrlKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
       e.preventDefault();
@@ -110,7 +124,7 @@ export function Dashboard({
   };
 
   return (
-    <Themed image={np?.track.image ?? null}>
+    <Themed image={np?.track.image ?? null} effects={effects} immersive={immersive}>
       <header className="topbar">
         <div className="topbar-in">
           <div className="row">
@@ -164,6 +178,20 @@ export function Dashboard({
 
         {top}
 
+        <RoomIntro queue={queue} played={state?.history.length ?? 0} />
+
+        <div className="room-toolbar">
+          <span className="room-channel"><span /> THE LISTENING ROOM <span className="room-channel-line" /></span>
+          <div className="row gap-sm">
+            <button className="room-toggle" aria-pressed={effects} onClick={() => setEffects((v) => !v)} title="Toggle decorative motion">
+              <Sparkles size={15} /> <span>Motion {effects ? "on" : "off"}</span>
+            </button>
+            <button className="room-toggle" aria-pressed={immersive} onClick={() => setImmersive((v) => !v)}>
+              {immersive ? <Minimize2 size={15} /> : <Expand size={15} />} <span>{immersive ? "Exit focus" : "Focus mode"}</span>
+            </button>
+          </div>
+        </div>
+
         <NowPlayingHero
           np={np}
           receivedAt={receivedAt}
@@ -172,9 +200,12 @@ export function Dashboard({
           onRequest={openRequest}
           canRequest={canRequest}
           controls={heroControls}
+          effects={effects}
         />
 
-        <div className="grid">
+        <NextTrack entry={queue[0]} onRequest={openRequest} canRequest={canRequest} />
+
+        <div className="grid" hidden={immersive}>
           {wide && (
             <div className="col-request">
               <RequestPanel {...requestProps} inputRef={inputRef} />
@@ -203,12 +234,12 @@ export function Dashboard({
           </div>
         </div>
 
-        {bottom}
+        {!immersive && bottom}
       </main>
 
-      {!wide && (
+      {(!wide || immersive) && (
         <>
-          <div className="dock">
+          {!wide && <div className="dock">
             <motion.button
               className="btn btn-cta dock-btn"
               onClick={openRequest}
@@ -221,7 +252,7 @@ export function Dashboard({
               <Plus size={22} strokeWidth={2.8} /> Request a song
               {myQueued > 0 && <span className="dock-count">{myQueued} queued</span>}
             </motion.button>
-          </div>
+          </div>}
           <Sheet open={sheet} onClose={() => setSheet(false)}>
             <RequestPanel {...requestProps} autoFocus onClose={() => setSheet(false)} />
           </Sheet>

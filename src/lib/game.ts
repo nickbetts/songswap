@@ -68,6 +68,43 @@ export const average = (e: Entry) => {
   return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 };
 
+/**
+ * Round-robin Up Next so everyone gets a turn: each round plays one song per person, in the
+ * order people first appear in the queue, and each person's own songs keep their order.
+ * Songs already handed to Spotify stay pinned at the front. Whoever played last (the last
+ * pinned song, else the current song) goes to the back of the first round so nobody gets
+ * two in a row while others are waiting.
+ */
+export function fairOrder(queue: Entry[], current: Entry | null): Entry[] {
+  let pinnedCount = 0;
+  while (pinnedCount < queue.length && queue[pinnedCount].handedOffAt) pinnedCount++;
+  const pinned = queue.slice(0, pinnedCount);
+  const groups = new Map<string, Entry[]>();
+  for (const e of queue.slice(pinnedCount)) {
+    const list = groups.get(e.addedBy.id);
+    if (list) list.push(e);
+    else groups.set(e.addedBy.id, [e]);
+  }
+  const users = [...groups.keys()];
+  const lastId = (pinned.at(-1) ?? current)?.addedBy.id;
+  if (lastId && users.length > 1 && users.includes(lastId)) {
+    users.splice(users.indexOf(lastId), 1);
+    users.push(lastId);
+  }
+  const out = [...pinned];
+  for (let round = 0; out.length < queue.length; round++) {
+    for (const u of users) {
+      const e = groups.get(u)![round];
+      if (e) out.push(e);
+    }
+  }
+  return out;
+}
+
+const applyFairOrder = (s: GameState) => {
+  s.queue = fairOrder(s.queue, s.nowPlaying);
+};
+
 export async function addSong(person: Person, trackId: string) {
   if (!/^[A-Za-z0-9]{10,32}$/.test(trackId)) throw new GameError(400, "Invalid track");
   // Fetch outside the lock so the lock is held briefly; re-check inside.
@@ -86,6 +123,7 @@ export async function addSong(person: Person, trackId: string) {
       addedAt: Date.now(),
       ratings: {},
     });
+    applyFairOrder(s);
     await save(s);
   });
   await forceSync();
@@ -149,14 +187,16 @@ export async function removeEntry(entryId: string) {
       throw new GameError(409, "Already sent to Spotify's queue. Skip it there or use Play now");
     }
     s.queue = s.queue.filter((x) => x.id !== entryId);
+    applyFairOrder(s);
     await save(s);
   });
 }
 
 /**
- * Reorders the queue to match `order` (entry ids). Songs already handed to Spotify stay
- * pinned at the front since Spotify's own queue can't be reordered; ids not in `order`
- * (e.g. added while the host was dragging) keep their relative order at the end.
+ * Reorders the queue to match `order` (entry ids), then re-applies the fair rotation: the
+ * dragged order decides who goes first in each round and which of a person's songs plays
+ * first. Songs already handed to Spotify stay pinned at the front since Spotify's own queue
+ * can't be reordered; ids not in `order` (e.g. added mid-drag) keep their relative order.
  */
 export async function reorderQueue(order: unknown) {
   if (!Array.isArray(order) || order.length > 500 || !order.every((x) => typeof x === "string")) {
@@ -175,12 +215,16 @@ export async function reorderQueue(order: unknown) {
       .sort((a, b) => a.k - b.k)
       .map((x) => x.e);
     s.queue = [...pinned, ...sorted];
+    applyFairOrder(s);
     await save(s);
   });
   await forceSync();
 }
 
-/** Host: shuffles Up Next. Songs already handed to Spotify stay pinned at the front. */
+/**
+ * Host: shuffles Up Next while keeping it fair (random turn order and random pick of each
+ * person's songs). Songs already handed to Spotify stay pinned at the front.
+ */
 export async function shuffleQueue() {
   await withLock("state", async () => {
     const s = await load();
@@ -193,6 +237,7 @@ export async function shuffleQueue() {
       [rest[i], rest[j]] = [rest[j], rest[i]];
     }
     s.queue = [...s.queue.slice(0, pinnedCount), ...rest];
+    applyFairOrder(s);
     await save(s);
   });
   await forceSync();
@@ -339,6 +384,8 @@ export async function sync() {
     } else {
       retire();
     }
+
+    applyFairOrder(s);
 
     if (pb?.isPlaying) s.pausedSince = null;
     else s.pausedSince ??= now;

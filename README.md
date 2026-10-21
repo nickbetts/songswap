@@ -4,11 +4,13 @@ Guests open your link, sign up with a username and password, add songs to a shar
 
 ## How it works
 
-- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify** and pick the **playback device** (e.g. your laptop) so commands never land on another phone/computer signed into the same account. Controls: play/pause/skip, "play now", drag to reorder, shuffle or remove queued songs, delete played songs or individual scores from the history, reset the session. The host page also lets you add songs and vote as "Nick".
+- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify** and pick the **playback device** (e.g. your laptop) so commands never land on another phone/computer signed into the same account. Controls: play/pause/skip, "play now", drag to change the turn order, shuffle or remove queued songs, delete played songs or individual scores from the history, reset the session. The host page also lets you add songs and vote as "Nick".
 - **Guests** (`/`): search Spotify and add as many songs as you like. Rate other people's songs 1–10 (you can't rate your own); voting is open, and votes can be changed, until the song finishes.
 - **Vote to skip**: anyone can vote to skip the current song (tap again to take it back). At 5 votes it skips straight to the next queued song; skipped songs are marked in the Played list.
+- **Fair queue**: Up Next plays in turns, one song per person per round (e.g. Amy, Ben, Cal, Amy, Ben, Amy…), however many songs someone adds. Each person's own songs play in the order they added them, and whoever just played goes to the back of the round. Shuffle and host drag-reordering stay fair: they change who goes first and which of someone's songs plays next.
 - The app keeps its own queue and feeds the next song into Spotify's queue ~25s before the current one ends (or starts it if the player is idle). This runs whenever anyone has the page open, so keep the host page or a guest tab open during the session.
 - Leaderboard ranks people by the average rating of their songs.
+- **Listening room**: album-colour lighting, a spinning record deck with a track-progress orbit, and a preview of the next pick. **Focus mode** hides the panels for an immersive player (Escape exits); requests and host controls still work. **Motion** pauses the decorative effects, and system reduced-motion preferences are respected. The ambient bars are decorative, not an audio analyser.
 
 ## Setup
 
