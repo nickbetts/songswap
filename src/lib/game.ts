@@ -120,7 +120,7 @@ export async function voteSkip(person: Person, entryId: string, vote: boolean) {
       const head = s.queue[0];
       try {
         if (head && !head.handedOffAt) {
-          await sp.playUris([head.track.uri]);
+          await sp.playTrack(head.track);
           head.handedOffAt = Date.now();
         } else {
           await sp.skipNext();
@@ -203,7 +203,7 @@ export async function playNow(entryId: string) {
     const s = await load();
     const e = s.queue.find((x) => x.id === entryId);
     if (!e) throw new GameError(404, "Not in the queue");
-    await sp.playUris([e.track.uri]);
+    await sp.playTrack(e.track);
     s.adminPaused = false;
     e.handedOffAt = Date.now();
     // Keep it first so it is matched as the now-playing track.
@@ -220,7 +220,7 @@ async function playHead(): Promise<boolean> {
     const s = await load();
     const head = s.queue[0];
     if (!head) return false;
-    await sp.playUris([head.track.uri]);
+    await sp.playTrack(head.track);
     head.handedOffAt = Date.now();
     s.adminPaused = false;
     s.pausedSince = null;
@@ -358,7 +358,7 @@ export async function sync() {
 
       try {
         if (takeover) {
-          await sp.playUris([head.track.uri]);
+          await sp.playTrack(head.track);
           retire();
           head.handedOffAt = now;
           s.pausedSince = null;

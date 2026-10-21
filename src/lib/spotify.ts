@@ -21,6 +21,7 @@ export interface Track {
   name: string;
   artists: string;
   album: string;
+  albumUri?: string;
   image: string | null;
   durationMs: number;
   explicit: boolean;
@@ -149,6 +150,7 @@ export function mapTrack(t: any): Track {
     name: t.name,
     artists: (t.artists ?? []).map((a: { name: string }) => a.name).join(", "),
     album: t.album?.name ?? "",
+    albumUri: t.album?.uri,
     image: t.album?.images?.[1]?.url ?? t.album?.images?.[0]?.url ?? null,
     durationMs: t.duration_ms,
     explicit: !!t.explicit,
@@ -255,7 +257,27 @@ async function player(path: string, init: RequestInit & { json?: unknown }) {
 export const addToSpotifyQueue = (uri: string) =>
   player(`/me/player/queue?${new URLSearchParams({ uri })}`, { method: "POST" });
 
-export const playUris = (uris: string[]) => player("/me/player/play", { method: "PUT", json: { uris } });
+/**
+ * Starts a track. The desktop app sometimes accepts a bare `uris` play (204) but never loads
+ * anything, leaving the player greyed out, so start it inside its album context instead.
+ * Falls back to `uris` if the context play is rejected (e.g. unusual tracks).
+ */
+export async function playTrack(track: Pick<Track, "id" | "uri" | "albumUri">) {
+  let albumUri = track.albumUri;
+  if (!albumUri) {
+    try {
+      albumUri = (await api(`/tracks/${encodeURIComponent(track.id)}`))?.album?.uri;
+    } catch {}
+  }
+  if (albumUri) {
+    try {
+      return await player("/me/player/play", { method: "PUT", json: { context_uri: albumUri, offset: { uri: track.uri } } });
+    } catch (e) {
+      if (!(e instanceof SpotifyError) || e instanceof DeviceUnavailableError || e.status === 401 || e.status === 403 && /premium/i.test(e.message)) throw e;
+    }
+  }
+  return player("/me/player/play", { method: "PUT", json: { uris: [track.uri] } });
+}
 
 export const pause = () => player("/me/player/pause", { method: "PUT" });
 export const resume = () => player("/me/player/play", { method: "PUT" });
