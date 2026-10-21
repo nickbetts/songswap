@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ADMIN_COOKIE, checkAdminPassword, isAdmin, makeAdminToken } from "@/lib/auth";
+import { ADMIN_COOKIE, checkAdminPassword, isAdmin, makeAdminToken, sameOrigin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!sameOrigin(req)) return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   if (body?.logout) {
     const res = NextResponse.json({ ok: true });

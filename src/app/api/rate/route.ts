@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { fail } from "@/lib/http";
-import { cleanPerson, rateSong } from "@/lib/game";
+import { assertSameOrigin, fail } from "@/lib/http";
+import { rateSong } from "@/lib/game";
+import { requireActor } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const person = cleanPerson(body?.user);
+    assertSameOrigin(req);
+    const person = await requireActor();
+    const body = await req.json().catch(() => ({}));
     await rateSong(person, String(body?.entryId ?? ""), Number(body?.score));
     return NextResponse.json({ ok: true });
   } catch (e) {

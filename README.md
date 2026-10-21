@@ -1,10 +1,10 @@
 # 🎧 Song Swap
 
-Guests open your link, pick a name, add songs to a shared queue, and rate whatever is playing out of 10. Songs play through *your* Spotify account.
+Guests open your link, sign up with a username and password, add songs to a shared queue, and rate whatever is playing out of 10. Songs play through *your* Spotify account.
 
 ## How it works
 
-- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify**. Controls: play/pause/skip, "play now", drag to reorder or remove queued songs, reset the session. The host page also lets you add songs and vote as "Nick".
+- **Host** (`/admin`): sign in with `ADMIN_PASSWORD`, then click **Connect Spotify**. Controls: play/pause/skip, "play now", drag to reorder, shuffle or remove queued songs, delete played songs or individual scores from the history, reset the session. The host page also lets you add songs and vote as "Nick".
 - **Guests** (`/`): search Spotify and add as many songs as you like. Rate other people's songs 1–10 (you can't rate your own); voting is open, and votes can be changed, until the song finishes.
 - **Vote to skip**: anyone can vote to skip the current song (tap again to take it back). At 5 votes it skips straight to the next queued song; skipped songs are marked in the Played list.
 - The app keeps its own queue and feeds the next song into Spotify's queue ~25s before the current one ends (or starts it if the player is idle). This runs whenever anyone has the page open, so keep the host page or a guest tab open during the session.
@@ -35,5 +35,6 @@ Open <http://127.0.0.1:3000>. (Spotify only allows `http` redirect URIs for loop
 
 ## Notes
 
-- Guest identity is a random id in the browser's localStorage plus a display name; it's built for friends, not adversaries.
+- Guests have accounts (unique, case-insensitive usernames; scrypt-hashed passwords; signed httpOnly session cookie). The server derives who you are from the session, never from the request body. Failed logins are rate-limited.
+- Anyone who requested songs before accounts existed gets an account under that name with the temporary password `i3media`, and must change it on first login.
 - Spotify has no API to remove items from its queue, so a song is only sent to Spotify near the end of the previous track. Once sent, use Skip/Play now rather than Remove.

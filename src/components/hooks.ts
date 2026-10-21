@@ -20,7 +20,7 @@ export interface PublicEntry {
   average: number | null;
   ratingCount: number;
   myScore: number | null;
-  ratings?: { name: string; score: number }[];
+  ratings?: { name: string; score: number; id?: string }[];
   handedOff: boolean;
   skipped?: boolean;
 }
@@ -42,54 +42,51 @@ export interface AppState {
   history: PublicEntry[];
   leaderboard: { name: string; average: number; songs: number }[];
   playerPaused: boolean;
+  me: User | null;
 }
 
 export interface User {
   id: string;
   name: string;
+  mustChange?: boolean;
 }
 
-const USER_KEY = "songswap:user";
+/** The logged-in account (from the server session cookie). `undefined` while loading. */
+export function useSession() {
+  const [user, setUser] = useState<User | null | undefined>(undefined);
 
-function randomId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export function useUser() {
-  const [user, setUserState] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const reload = useCallback(async () => {
+    try {
+      const j = await fetch("/api/user", { cache: "no-store" }).then((r) => r.json());
+      setUser(j.user ?? null);
+    } catch {
+      setUser(null);
+    }
+  }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(USER_KEY);
-      if (raw) setUserState(JSON.parse(raw));
-    } catch {}
-    setReady(true);
+    reload();
+  }, [reload]);
+
+  const logout = useCallback(async () => {
+    await postJSON("/api/user", { action: "logout" }).catch(() => {});
+    setUser(null);
   }, []);
 
-  const setName = useCallback((name: string) => {
-    setUserState((prev) => {
-      const next = { id: prev?.id ?? randomId(), name: name.trim().slice(0, 24) };
-      localStorage.setItem(USER_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  return { user, ready, setName };
+  return { user, setUser, logout, ready: user !== undefined };
 }
 
-export function useAppState(userId: string | null, intervalMs = 3000) {
+export function useAppState(enabled = true, intervalMs = 3000) {
   const [state, setState] = useState<AppState | null>(null);
   const [receivedAt, setReceivedAt] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const inflight = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (inflight.current) return;
+    if (!enabled || inflight.current) return;
     inflight.current = true;
     try {
-      const res = await fetch(`/api/state${userId ? `?userId=${userId}` : ""}`, { cache: "no-store" });
+      const res = await fetch("/api/state", { cache: "no-store" });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Failed to load");
       setState(j);
@@ -100,7 +97,7 @@ export function useAppState(userId: string | null, intervalMs = 3000) {
     } finally {
       inflight.current = false;
     }
-  }, [userId]);
+  }, [enabled]);
 
   useEffect(() => {
     refresh();

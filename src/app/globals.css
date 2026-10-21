@@ -1928,3 +1928,67 @@ li.qrow {
     display: none;
   }
 }
+
+/* ───────── Accounts ───────── */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-form h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+.auth-form p {
+  margin: 2px 0 0;
+}
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+}
+.auth-tabs button {
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auth-tabs button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.account-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-menu .btn {
+  width: 100%;
+  justify-content: center;
+}
+.chip-x {
+  display: inline-grid;
+  place-items: center;
+  margin: -2px -4px -2px 4px;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.chip-x:hover {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+}

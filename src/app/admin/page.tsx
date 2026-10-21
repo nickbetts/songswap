@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { ArrowLeft, Link2, Lock, LogOut, Pause, Play, PlayCircle, RotateCcw, SkipForward, Trash2, Unplug } from "lucide-react";
+import { ArrowLeft, Link2, Lock, LogOut, Pause, Play, PlayCircle, RotateCcw, Shuffle, SkipForward, Trash2, Unplug } from "lucide-react";
 import { Dashboard, Logo, Themed } from "@/components/shell";
 import { postJSON, useAppState, type User } from "@/components/hooks";
 import { Spinner } from "@/components/ui";
@@ -15,7 +15,7 @@ export default function Admin() {
   const [pw, setPw] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const { state, receivedAt, loadError, refresh } = useAppState(admin ? HOST.id : null);
+  const { state, receivedAt, loadError, refresh } = useAppState(!!admin);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -103,7 +103,7 @@ export default function Admin() {
 
   return (
     <Dashboard
-      user={HOST}
+      user={state?.me ?? HOST}
       state={state}
       receivedAt={receivedAt}
       loadError={loadError}
@@ -169,6 +169,16 @@ export default function Admin() {
             <motion.button className="t-btn" whileTap={{ scale: 0.9 }} onClick={() => act("skip")} aria-label="Skip">
               {busy === "skip" ? <Spinner size={18} /> : <SkipForward size={20} fill="currentColor" />}
             </motion.button>
+            <motion.button
+              className="t-btn"
+              whileTap={{ scale: 0.9 }}
+              onClick={() => act("shuffle")}
+              disabled={(state?.queue.filter((e) => !e.handedOff).length ?? 0) < 2}
+              title="Shuffle Up Next"
+              aria-label="Shuffle Up Next"
+            >
+              {busy === "shuffle" ? <Spinner size={18} /> : <Shuffle size={20} />}
+            </motion.button>
             <span className="muted small">Host controls</span>
           </div>
         )
@@ -182,6 +192,11 @@ export default function Admin() {
         } finally {
           refresh();
         }
+      }}
+      historyAdmin={{
+        onDelete: (e) => act("deleteHistory", { entryId: e.id }, `Delete “${e.track.name}” and all its scores from the history?`),
+        onDeleteRating: (e, raterId, name) =>
+          act("deleteRating", { entryId: e.id, raterId }, `Delete ${name}’s score for “${e.track.name}”?`),
       }}
       queueActions={(e) => (
         <div className="row-actions">

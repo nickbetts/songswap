@@ -1,21 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "motion/react";
-import { ArrowRight, ListPlus, Star, Trophy } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowRight, KeyRound, ListPlus, LogOut, Star, Trophy } from "lucide-react";
 import { Dashboard, Logo, Themed } from "@/components/shell";
-import { NameDialog } from "@/components/parts";
-import { Art, Avatar, Equalizer } from "@/components/ui";
-import { AppState, useAppState, useUser } from "@/components/hooks";
+import { PasswordDialog, PasswordForm } from "@/components/parts";
+import { Art, Avatar, Equalizer, Spinner } from "@/components/ui";
+import { AppState, User, postJSON, useAppState, useSession } from "@/components/hooks";
 
 export default function Home() {
-  const { user, ready, setName } = useUser();
-  const { state, receivedAt, loadError, refresh } = useAppState(ready ? (user?.id ?? null) : null);
-  const [editing, setEditing] = useState(false);
+  const { user, ready, setUser, logout } = useSession();
+  const { state, receivedAt, loadError, refresh } = useAppState(ready);
+  const [menu, setMenu] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
 
   if (!ready) return null;
 
-  if (!user) return <Join state={state} onJoin={setName} />;
+  if (!user) return <Join state={state} onJoin={(u) => (setUser(u), refresh())} />;
+
+  if (user.mustChange) {
+    return (
+      <Themed image={state?.nowPlaying?.track.image ?? null}>
+        <main className="join">
+          <div className="join-card glass narrow">
+            <Logo />
+            <p className="muted">
+              Hi <strong>{user.name}</strong>, welcome back!
+            </p>
+            <PasswordForm forced onDone={(u) => (setUser(u), refresh())} onCancel={logout} />
+          </div>
+        </main>
+      </Themed>
+    );
+  }
 
   return (
     <>
@@ -25,14 +42,47 @@ export default function Home() {
         receivedAt={receivedAt}
         loadError={loadError}
         refresh={refresh}
-        onEditName={() => setEditing(true)}
+        onEditName={() => setMenu(true)}
         bottom={
           <footer className="foot">
             <a href="/admin">Host login</a>
           </footer>
         }
       />
-      <NameDialog open={editing} initial={user.name} onSave={setName} onClose={() => setEditing(false)} />
+      <AnimatePresence>
+        {menu && (
+          <>
+            <motion.div className="scrim" onClick={() => setMenu(false)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+            <div className="dialog-wrap">
+              <motion.div
+                className="dialog glass"
+                role="dialog"
+                aria-modal
+                initial={{ opacity: 0, scale: 0.92, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              >
+                <div className="row">
+                  <Avatar name={user.name} size={44} />
+                  <div className="grow">
+                    <h3>{user.name}</h3>
+                    <p className="muted small">Signed in</p>
+                  </div>
+                </div>
+                <div className="account-menu">
+                  <button className="btn ghost" onClick={() => (setMenu(false), setPwOpen(true))}>
+                    <KeyRound size={16} /> Change password
+                  </button>
+                  <button className="btn ghost" onClick={() => (setMenu(false), logout())}>
+                    <LogOut size={16} /> Log out
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+      <PasswordDialog open={pwOpen} onClose={() => setPwOpen(false)} />
     </>
   );
 }
@@ -43,8 +93,7 @@ const STEPS = [
   { icon: Trophy, title: "Win", text: "Best average crowd score takes the crown." },
 ];
 
-function Join({ state, onJoin }: { state: AppState | null; onJoin: (name: string) => void }) {
-  const [draft, setDraft] = useState("");
+function Join({ state, onJoin }: { state: AppState | null; onJoin: (user: User) => void }) {
   const np = state?.nowPlaying;
 
   return (
@@ -83,31 +132,7 @@ function Join({ state, onJoin }: { state: AppState | null; onJoin: (name: string
             ))}
           </ol>
 
-          <form
-            className="join-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (draft.trim()) onJoin(draft);
-            }}
-          >
-            <label className="field">
-              <span className="field-label">What should we call you?</span>
-              <span className="field-row">
-                <Avatar name={draft || "?"} size={36} />
-                <input
-                  className="input bare"
-                  autoFocus
-                  maxLength={24}
-                  placeholder="Your name"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                />
-              </span>
-            </label>
-            <motion.button className="btn btn-lg btn-cta" disabled={!draft.trim()} whileTap={{ scale: 0.97 }}>
-              Join the party <ArrowRight size={20} />
-            </motion.button>
-          </form>
+          <AuthForm onJoin={onJoin} />
 
           {np && (
             <div className="peek">
@@ -128,5 +153,76 @@ function Join({ state, onJoin }: { state: AppState | null; onJoin: (name: string
         </footer>
       </main>
     </Themed>
+  );
+}
+
+function AuthForm({ onJoin }: { onJoin: (user: User) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setBusy(true);
+    try {
+      const j = await postJSON("/api/user", { action: mode, username, password });
+      onJoin(j.user);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="join-form" onSubmit={submit}>
+      <div className="auth-tabs" role="tablist">
+        {(["login", "register"] as const).map((m) => (
+          <button key={m} type="button" role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => (setMode(m), setErr(null))}>
+            {m === "login" ? "Log in" : "Sign up"}
+          </button>
+        ))}
+      </div>
+      <label className="field">
+        <span className="field-label">Username</span>
+        <span className="field-row">
+          <Avatar name={username || "?"} size={36} />
+          <input
+            className="input bare"
+            autoFocus
+            autoComplete="username"
+            maxLength={24}
+            placeholder="Your name"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </span>
+      </label>
+      <label className="field">
+        <span className="field-label">Password</span>
+        <span className="field-row">
+          <input
+            className="input bare"
+            type="password"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            placeholder={mode === "login" ? "Your password" : "At least 6 characters"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </span>
+      </label>
+      {mode === "login" && !err && (
+        <p className="muted small">
+          Requested songs before? Log in with your name and the temporary password <strong>i3media</strong>, then pick your own.
+        </p>
+      )}
+      {err && <p className="error">{err}</p>}
+      <motion.button className="btn btn-lg btn-cta" disabled={busy || !username.trim() || !password} whileTap={{ scale: 0.97 }}>
+        {busy ? <Spinner size={20} /> : mode === "login" ? "Log in" : "Join the party"} {!busy && <ArrowRight size={20} />}
+      </motion.button>
+    </form>
   );
 }

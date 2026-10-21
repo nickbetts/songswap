@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { fail } from "@/lib/http";
-import { cleanPerson, voteSkip } from "@/lib/game";
+import { assertSameOrigin, fail } from "@/lib/http";
+import { voteSkip } from "@/lib/game";
+import { requireActor } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const person = cleanPerson(body?.user);
+    assertSameOrigin(req);
+    const person = await requireActor();
+    const body = await req.json().catch(() => ({}));
     const result = await voteSkip(person, String(body?.entryId ?? ""), body?.vote !== false);
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {

@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import { getKV, withLock } from "./store";
 import * as sp from "./spotify";
 import type { Track } from "./spotify";
@@ -61,15 +62,6 @@ async function save(s: GameState) {
 }
 
 const forceSync = () => getKV().del("ss:sync");
-
-export function cleanPerson(p: unknown): Person {
-  const o = (p ?? {}) as Record<string, unknown>;
-  const id = typeof o.id === "string" ? o.id.trim() : "";
-  const name = typeof o.name === "string" ? o.name.trim().replace(/\s+/g, " ").slice(0, 24) : "";
-  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) throw new GameError(400, "Invalid user id");
-  if (!name) throw new GameError(400, "Please enter a name");
-  return { id, name };
-}
 
 export const average = (e: Entry) => {
   const scores = Object.values(e.ratings).map((r) => r.score);
@@ -188,6 +180,24 @@ export async function reorderQueue(order: unknown) {
   await forceSync();
 }
 
+/** Host: shuffles Up Next. Songs already handed to Spotify stay pinned at the front. */
+export async function shuffleQueue() {
+  await withLock("state", async () => {
+    const s = await load();
+    let pinnedCount = 0;
+    while (pinnedCount < s.queue.length && s.queue[pinnedCount].handedOffAt) pinnedCount++;
+    const rest = s.queue.slice(pinnedCount);
+    if (rest.length < 2) throw new GameError(409, "Not enough songs in Up Next to shuffle");
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    s.queue = [...s.queue.slice(0, pinnedCount), ...rest];
+    await save(s);
+  });
+  await forceSync();
+}
+
 export async function playNow(entryId: string) {
   await withLock("state", async () => {
     const s = await load();
@@ -204,16 +214,45 @@ export async function playNow(entryId: string) {
   await forceSync();
 }
 
+/** Starts the head of our queue on Spotify. Returns false if the queue is empty. */
+async function playHead(): Promise<boolean> {
+  return withLock("state", async () => {
+    const s = await load();
+    const head = s.queue[0];
+    if (!head) return false;
+    await sp.playUris([head.track.uri]);
+    head.handedOffAt = Date.now();
+    s.adminPaused = false;
+    s.pausedSince = null;
+    s.error = null;
+    await save(s);
+    return true;
+  });
+}
+
 export async function playerControl(action: "pause" | "resume" | "skip") {
-  await withLock("state", async () => {
-    const st = await load();
-    st.adminPaused = action === "pause";
-    await save(st);
+  const st = await withLock("state", async () => {
+    const s = await load();
+    s.adminPaused = action === "pause";
+    await save(s);
+    return s;
   });
   try {
     if (action === "pause") await sp.pause();
-    else if (action === "resume") await sp.resume();
-    else await sp.skipNext();
+    else if (action === "resume") {
+      // If Spotify isn't on one of our songs (e.g. after reconnecting, or it's idle), a plain
+      // resume would restart whatever Spotify last had, so start our Up Next queue instead.
+      if (!st.nowPlaying && (await playHead())) {
+        await forceSync();
+        return;
+      }
+      try {
+        await sp.resume();
+      } catch (e) {
+        // Nothing for Spotify to resume (idle/new session): fall back to our queue.
+        if (!(e instanceof sp.SpotifyError) || ![403, 404].includes(e.status) || !(await playHead())) throw e;
+      }
+    } else await sp.skipNext();
   } catch (e) {
     if (e instanceof sp.SpotifyError && e.status === 403) {
       throw new GameError(409, `Spotify refused to ${action} right now (already ${action === "resume" ? "playing" : "paused"}, or an ad is playing).`);
@@ -221,6 +260,29 @@ export async function playerControl(action: "pause" | "resume" | "skip") {
     throw e;
   }
   await forceSync();
+}
+
+/** Host: removes a played song (and its scores) from history, which also updates the leaderboard. */
+export async function deleteHistoryEntry(entryId: string) {
+  await withLock("state", async () => {
+    const s = await load();
+    const before = s.history.length;
+    s.history = s.history.filter((e) => e.id !== entryId);
+    if (s.history.length === before) throw new GameError(404, "Not in the played history");
+    await save(s);
+  });
+}
+
+/** Host: removes one person's score from a played (or the currently playing) song. */
+export async function deleteRating(entryId: string, raterId: string) {
+  await withLock("state", async () => {
+    const s = await load();
+    const e = s.nowPlaying?.id === entryId ? s.nowPlaying : s.history.find((x) => x.id === entryId);
+    if (!e) throw new GameError(404, "Song not found");
+    if (!Object.hasOwn(e.ratings, raterId)) throw new GameError(404, "Score not found");
+    delete e.ratings[raterId];
+    await save(s);
+  });
 }
 
 export async function resetAll() {
@@ -317,7 +379,7 @@ export async function sync() {
   }).catch(() => {});
 }
 
-function publicEntry(e: Entry, userId: string | null, showRatings: boolean) {
+function publicEntry(e: Entry, userId: string | null, showRatings: boolean, admin = false) {
   const avg = average(e);
   return {
     id: e.id,
@@ -327,7 +389,9 @@ function publicEntry(e: Entry, userId: string | null, showRatings: boolean) {
     average: avg,
     ratingCount: Object.keys(e.ratings).length,
     myScore: userId ? (e.ratings[userId]?.score ?? null) : null,
-    ratings: showRatings ? Object.values(e.ratings).map((r) => ({ name: r.name, score: r.score })) : undefined,
+    ratings: showRatings
+      ? Object.entries(e.ratings).map(([id, r]) => ({ name: r.name, score: r.score, ...(admin ? { id } : {}) }))
+      : undefined,
     handedOff: !!e.handedOffAt,
     skipped: !!e.skippedAt,
   };
@@ -377,7 +441,7 @@ export async function publicState(userId: string | null, admin: boolean) {
         }
       : null,
     queue: s.queue.map((e) => publicEntry(e, userId, false)),
-    history: s.history.slice(0, 50).map((e) => publicEntry(e, userId, true)),
+    history: s.history.slice(0, admin ? MAX_HISTORY : 50).map((e) => publicEntry(e, userId, true, admin)),
     leaderboard,
     playerPaused: !!pb && !pb.isPlaying,
   };

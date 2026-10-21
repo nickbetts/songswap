@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { GameError } from "./game";
 import { SpotifyError } from "./spotify";
+import { AuthError } from "./users";
+import { sameOrigin } from "./auth";
 
 export function fail(e: unknown) {
-  if (e instanceof GameError || e instanceof SpotifyError) {
+  if (e instanceof GameError || e instanceof SpotifyError || e instanceof AuthError) {
     return NextResponse.json({ error: e.message }, { status: e.status >= 400 && e.status < 600 ? e.status : 500 });
   }
+  if (e instanceof Error && e.message === "Busy, try again") return NextResponse.json({ error: e.message }, { status: 503 });
   console.error(e);
-  return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  return NextResponse.json({ error: "Server error" }, { status: 500 });
 }
 
 export function origin(req: Request) {
@@ -19,4 +22,9 @@ export function origin(req: Request) {
 
 export function redirectUri(req: Request) {
   return process.env.SPOTIFY_REDIRECT_URI || `${origin(req)}/api/auth/callback`;
+}
+
+/** Throws unless a state-changing request came from our own site. */
+export function assertSameOrigin(req: Request) {
+  if (!sameOrigin(req)) throw new AuthError(403, "Cross-site request blocked");
 }

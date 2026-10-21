@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { fail } from "@/lib/http";
 import { publicState, sync } from "@/lib/game";
+import { HOST_PERSON, currentUser } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const userId = new URL(req.url).searchParams.get("userId");
     await sync();
-    const state = await publicState(userId && /^[A-Za-z0-9_-]{8,64}$/.test(userId) ? userId : null, await isAdmin());
-    return NextResponse.json(state, { headers: { "Cache-Control": "no-store" } });
+    const [me, admin] = await Promise.all([currentUser(), isAdmin()]);
+    const actor = me ?? (admin ? { ...HOST_PERSON, mustChange: false } : null);
+    const state = await publicState(actor?.id ?? null, admin);
+    return NextResponse.json({ ...state, me: actor }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return fail(e);
   }

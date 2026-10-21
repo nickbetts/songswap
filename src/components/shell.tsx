@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, Disc3, Plus, Radio } from "lucide-react";
 import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./hooks";
-import { NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
+import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
 import { Avatar, Backdrop, Kbd } from "./ui";
 
 export function Logo({ spinning = false }: { spinning?: boolean }) {
@@ -44,6 +44,7 @@ export function Dashboard({
   heroControls,
   queueActions,
   onReorder,
+  historyAdmin,
   bottom,
 }: {
   user: User;
@@ -58,6 +59,7 @@ export function Dashboard({
   heroControls?: React.ReactNode;
   queueActions?: (e: PublicEntry) => React.ReactNode;
   onReorder?: (ids: string[]) => Promise<void>;
+  historyAdmin?: HistoryAdmin;
   bottom?: React.ReactNode;
 }) {
   const np = state?.nowPlaying ?? null;
@@ -124,7 +126,7 @@ export function Dashboard({
               <Plus size={18} strokeWidth={2.8} /> Request a song <Kbd>/</Kbd>
             </button>
             {onEditName ? (
-              <button className="user-chip" onClick={onEditName} title="Change your name">
+              <button className="user-chip" onClick={onEditName} title="Account">
                 <Avatar name={user.name} size={26} />
                 <span className="user-name">{user.name}</span>
               </button>
@@ -196,6 +198,7 @@ export function Dashboard({
               history={state?.history ?? []}
               userId={user.id}
               userName={user.name}
+              historyAdmin={historyAdmin}
             />
           </div>
         </div>

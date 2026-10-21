@@ -17,6 +17,7 @@ import {
   Search,
   SkipForward,
   Sparkles,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -115,7 +116,7 @@ export function NowPlayingHero({
     setPending(n);
     if (n >= 9) burst(el, { count: n === 10 ? 120 : 50, colors: [heat(n), "#ffffff", "#ffd54a"] });
     try {
-      await postJSON("/api/rate", { user, entryId: np!.id, score: n });
+      await postJSON("/api/rate", { entryId: np!.id, score: n });
       onChange();
     } catch (e) {
       setPending(prev);
@@ -282,7 +283,7 @@ function SkipVote({ np, user, onChange }: { np: NowPlaying; user: User | null; o
     const next = !mine;
     setPending(next);
     try {
-      const r = await postJSON("/api/skip", { user, entryId: np.id, vote: next });
+      const r = await postJSON("/api/skip", { entryId: np.id, vote: next });
       if (r.skipped) toast("Skipped by popular vote 👋", { description: np.track.name });
       onChange();
     } catch (e) {
@@ -397,7 +398,7 @@ export function RequestPanel({
     if (!user) return;
     setBusy(t.id);
     try {
-      await postJSON("/api/queue", { user, trackId: t.id });
+      await postJSON("/api/queue", { trackId: t.id });
       setJustAdded((s) => new Set(s).add(t.id));
       burst(el, { count: 40, spread: 55 });
       toast.success(`Requested “${t.name}”`, {
@@ -800,16 +801,23 @@ function QueueRowBody({
 
 /* ───────────────────────────── Leaderboard / Played ───────────────────────────── */
 
+export interface HistoryAdmin {
+  onDelete: (e: PublicEntry) => void;
+  onDeleteRating: (e: PublicEntry, raterId: string, raterName: string) => void;
+}
+
 export function SidePanel({
   leaderboard,
   history,
   userId,
   userName,
+  historyAdmin,
 }: {
   leaderboard: AppState["leaderboard"];
   history: PublicEntry[];
   userId: string | null;
   userName: string | null;
+  historyAdmin?: HistoryAdmin;
 }) {
   const [tab, setTab] = useState<"board" | "played">("board");
   return (
@@ -846,7 +854,7 @@ export function SidePanel({
           {tab === "board" ? (
             <Leaderboard rows={leaderboard} me={userName} />
           ) : (
-            <History items={history} userId={userId} />
+            <History items={history} userId={userId} admin={historyAdmin} />
           )}
         </motion.div>
       </AnimatePresence>
@@ -903,7 +911,7 @@ export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: s
   );
 }
 
-export function History({ items, userId }: { items: PublicEntry[]; userId: string | null }) {
+export function History({ items, userId, admin }: { items: PublicEntry[]; userId: string | null; admin?: HistoryAdmin }) {
   if (!items.length) {
     return (
       <div className="empty">
@@ -930,12 +938,27 @@ export function History({ items, userId }: { items: PublicEntry[]; userId: strin
                 {e.ratings.map((r, i) => (
                   <span key={i} className="chip" style={{ "--c": heat(r.score) } as React.CSSProperties}>
                     {r.name} <b>{r.score}</b>
+                    {admin && r.id && (
+                      <button
+                        className="chip-x"
+                        title={`Delete ${r.name}’s score`}
+                        aria-label={`Delete ${r.name}’s score`}
+                        onClick={() => admin.onDeleteRating(e, r.id!, r.name)}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
             )}
           </div>
           <ScoreBadge value={e.average} />
+          {admin && (
+            <button className="icon-btn sm danger" title="Delete from history" aria-label={`Delete ${e.track.name} from history`} onClick={() => admin.onDelete(e)}>
+              <Trash2 size={16} />
+            </button>
+          )}
         </li>
       ))}
     </ul>
@@ -993,67 +1016,110 @@ export function Sheet({ open, onClose, children }: { open: boolean; onClose: () 
   );
 }
 
-export function NameDialog({
-  open,
-  initial,
-  onSave,
-  onClose,
+export function PasswordForm({
+  forced = false,
+  onDone,
+  onCancel,
 }: {
-  open: boolean;
-  initial: string;
-  onSave: (name: string) => void;
-  onClose: () => void;
+  forced?: boolean;
+  onDone: (user: User) => void;
+  onCancel?: () => void;
 }) {
-  const [v, setV] = useState(initial);
-  useEffect(() => {
-    if (open) setV(initial);
-  }, [open, initial]);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (next !== confirmPw) return setErr("New passwords don’t match");
+    setBusy(true);
+    try {
+      const j = await postJSON("/api/user", { action: "changePassword", current, password: next });
+      toast.success("Password updated");
+      onDone(j.user);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not change password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="auth-form" onSubmit={submit}>
+      <div className="row">
+        <span className="step-icon">
+          <Lock size={18} />
+        </span>
+        <div className="grow">
+          <h3>{forced ? "Set a new password" : "Change password"}</h3>
+          <p className="muted small">
+            {forced ? "You’re using the temporary password. Choose your own to continue." : "At least 6 characters."}
+          </p>
+        </div>
+      </div>
+      <input
+        className="input"
+        type="password"
+        autoComplete="current-password"
+        placeholder={forced ? "Temporary password" : "Current password"}
+        autoFocus
+        value={current}
+        onChange={(e) => setCurrent(e.target.value)}
+      />
+      <input
+        className="input"
+        type="password"
+        autoComplete="new-password"
+        placeholder="New password"
+        minLength={6}
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+      />
+      <input
+        className="input"
+        type="password"
+        autoComplete="new-password"
+        placeholder="Confirm new password"
+        value={confirmPw}
+        onChange={(e) => setConfirmPw(e.target.value)}
+      />
+      {err && <p className="error">{err}</p>}
+      <div className="row end">
+        {onCancel && (
+          <button type="button" className="btn ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+        <button className="btn" disabled={busy || !current || next.length < 6 || !confirmPw}>
+          {busy ? <Spinner size={18} /> : "Save password"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function PasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <AnimatePresence>
       {open && (
         <>
           <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
           <div className="dialog-wrap">
-            <motion.form
+            <motion.div
               className="dialog glass"
               role="dialog"
               aria-modal
+              onKeyDown={(e) => e.key === "Escape" && onClose()}
               initial={{ opacity: 0, scale: 0.92, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (v.trim()) {
-                  onSave(v);
-                  onClose();
-                }
-              }}
             >
-              <div className="row">
-                <Avatar name={v || "?"} size={44} />
-                <div className="grow">
-                  <h3>Change your name</h3>
-                  <p className="muted small">Shown next to your requests and ratings.</p>
-                </div>
-              </div>
-              <input
-                className="input"
-                autoFocus
-                maxLength={24}
-                value={v}
-                onChange={(e) => setV(e.target.value)}
-                onKeyDown={(e) => e.key === "Escape" && onClose()}
-              />
-              <div className="row end">
-                <button type="button" className="btn ghost" onClick={onClose}>
-                  Cancel
-                </button>
-                <button className="btn" disabled={!v.trim()}>
-                  Save
-                </button>
-              </div>
-            </motion.form>
+              <PasswordForm onDone={onClose} onCancel={onClose} />
+            </motion.div>
           </div>
         </>
       )}
