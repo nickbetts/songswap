@@ -25,6 +25,7 @@ export interface Track {
   image: string | null;
   durationMs: number;
   explicit: boolean;
+  isrc?: string | null;
 }
 
 export interface Playback {
@@ -32,6 +33,7 @@ export interface Playback {
   progressMs: number;
   trackId: string | null;
   linkedFromId?: string | null;
+  isrc?: string | null;
   durationMs: number;
   deviceId?: string | null;
   deviceName?: string | null;
@@ -157,6 +159,7 @@ export function mapTrack(t: any): Track {
     image: t.album?.images?.[1]?.url ?? t.album?.images?.[0]?.url ?? null,
     durationMs: t.duration_ms,
     explicit: !!t.explicit,
+    isrc: t.external_ids?.isrc ?? null,
   };
 }
 
@@ -185,6 +188,7 @@ export async function getPlayback(): Promise<Playback | null> {
     progressMs: j.progress_ms ?? 0,
     trackId: j.item.id ?? null,
     linkedFromId: j.item.linked_from?.id ?? null,
+    isrc: j.item.external_ids?.isrc ?? null,
     durationMs: j.item.duration_ms ?? 0,
     deviceId: j.device?.id ?? null,
     deviceName: j.device?.name ?? null,

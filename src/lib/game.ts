@@ -518,7 +518,21 @@ export async function sync() {
     };
 
     const matchesPlayback = (entry: Entry) =>
-      entry.track.id === pb?.trackId || (!!pb?.linkedFromId && entry.track.id === pb.linkedFromId);
+      entry.track.id === pb?.trackId ||
+      (!!pb?.linkedFromId && entry.track.id === pb.linkedFromId) ||
+      (!!pb?.isrc && !!entry.track.isrc && entry.track.isrc.toUpperCase() === pb.isrc.toUpperCase());
+    if (pb?.isrc) {
+      const candidates = [
+        ...(s.nowPlaying ? [s.nowPlaying] : []),
+        ...s.queue.filter((entry) => entry.handedOffAt),
+      ];
+      for (const entry of candidates) {
+        if (!matchesPlayback(entry) && entry.track.isrc === undefined) {
+          // Existing queue entries predate recording codes; resolve once and persist it.
+          entry.track.isrc = (await sp.getTrack(entry.track.id)).isrc ?? null;
+        }
+      }
+    }
     if (pb?.trackId || pb?.linkedFromId) {
       if (!s.nowPlaying || !matchesPlayback(s.nowPlaying)) {
         retire();

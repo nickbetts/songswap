@@ -141,6 +141,50 @@ test("unconfirmed playback does not restart the same requested song indefinitely
   assert.equal(state.error, null);
 });
 
+test("another release of the same recording restores now playing and voting for legacy requests", async () => {
+  await seed([{ ...a1, handedOffAt: Date.now() - 20000 }, b1]);
+  const fetch = global.fetch;
+  let lookups = 0;
+  global.fetch = async (input, init) => {
+    if (new URL(input).pathname === `/v1/tracks/${a1.track.id}`) {
+      lookups++;
+      return Response.json({
+        id: a1.track.id, external_ids: { isrc: "GBTEST000001" },
+      });
+    }
+    return fetch(input, init);
+  };
+  playback = {
+    is_playing: true, progress_ms: 5000,
+    item: { id: "different-release", external_ids: { isrc: "GBTEST000001" }, duration_ms: 200000 },
+  };
+  await game.sync();
+  let state = await game.publicState("voter", true);
+  assert.equal(state.nowPlaying.id, "a1");
+  assert.equal(state.nowPlaying.canRate, true);
+  assert.equal(state.error, null);
+  await game.rateSong(person("voter"), "a1", 9);
+  await kv.del("ss:sync");
+  await game.sync();
+  state = await game.publicState("voter", true);
+  assert.equal(state.nowPlaying.myScore, 9);
+  assert.equal(lookups, 1);
+  assert.deepEqual(commands, []);
+});
+
+test("a different recording is not credited to the requested song", async () => {
+  await seed([{ ...a1, track: { ...a1.track, isrc: "GBTEST000001" }, handedOffAt: Date.now() - 20000 }]);
+  playback = {
+    is_playing: true, progress_ms: 5000,
+    item: { id: "different-recording", external_ids: { isrc: "GBTEST000002" }, duration_ms: 200000 },
+  };
+  await game.sync();
+  const state = await game.publicState("voter", true);
+  assert.equal(state.nowPlaying, null);
+  assert.match(state.error, /not confirmed/);
+  assert.deepEqual(commands, []);
+});
+
 test("ties award one point each, repeat polls do not award twice, and host edits recalculate", async () => {
   await seed([a1, b1, a2]);
   await tick(a1);
