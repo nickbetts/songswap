@@ -163,7 +163,7 @@ export function NowPlayingHero({
             </h2>
             <div className="hero-artist">{np.track.artists}</div>
             <div className="picked-by">
-              <Avatar name={np.addedBy.name} size={24} />
+              <Avatar name={np.addedBy.name} size={72} />
               <span>
                 Picked by <strong className={mine ? "accent" : ""}>{mine ? "you" : np.addedBy.name}</strong>
               </span>
