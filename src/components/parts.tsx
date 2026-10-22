@@ -11,6 +11,7 @@ import {
   GripVertical,
   History as HistoryIcon,
   Lock,
+  Medal,
   Music2,
   Plus,
   Search,
@@ -619,7 +620,7 @@ export function RoundPanel({
           {!current && <button className="btn ghost sm" onClick={() => setPage(null)}>Live round</button>}
         </nav>
         {completed && <p className="round-summary">{resultText(completed)}</p>}
-        {!!history.length && <History items={[...history].reverse()} userId={userId} admin={historyAdmin} />}
+        {!!history.length && <History items={history} userId={userId} admin={historyAdmin} roundStatus={completed ? "complete" : "live"} />}
         {current && state.nowPlaying && (
           <div className="list queue round-playing">
             <div className={`qrow playing ${state.nowPlaying.addedBy.id === userId ? "mine" : ""}`}>
@@ -1014,7 +1015,15 @@ export function Leaderboard({ rows, me, mode }: { rows: AppState["leaderboard"];
   );
 }
 
-export function History({ items, userId, admin }: { items: PublicEntry[]; userId: string | null; admin?: HistoryAdmin }) {
+export function History({ items, userId, admin, roundStatus }: {
+  items: PublicEntry[];
+  userId: string | null;
+  admin?: HistoryAdmin;
+  roundStatus?: "live" | "complete";
+}) {
+  const ranked = [...items].sort((a, b) => (b.average ?? -1) - (a.average ?? -1));
+  const best = ranked[0]?.average ?? null;
+  const tied = best !== null && ranked.filter((e) => e.average === best).length > 1;
   if (!items.length) {
     return (
       <div className="empty">
@@ -1025,17 +1034,31 @@ export function History({ items, userId, admin }: { items: PublicEntry[]; userId
   }
   return (
     <ul className="list played">
-      {items.map((e) => (
-        <li key={e.id} className="hrow">
+      {ranked.map((e) => {
+        const leader = !!roundStatus && best !== null && e.average === best;
+        const leaderLabel = roundStatus === "complete"
+          ? tied ? "Joint round winner" : "Round winner"
+          : tied ? "Joint round leader" : "Current round leader";
+        return (
+        <li key={e.id} className={`hrow ${leader ? "round-leader" : ""}`}>
           <Art src={e.track.image} size={44} />
           <div className="grow">
+            {leader && <div className="round-leader-label"><Crown size={13} aria-hidden="true" /> {leaderLabel}</div>}
             <div className="title">
               {e.track.name}
               <span className="tag">Played</span>
               {e.skipped && <span className="tag skipped">Skipped</span>}
             </div>
-            <div className="sub">
-              {e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}
+            <div className={`sub ${leader ? "round-leader-picker" : ""}`}>
+              {leader ? (
+                <>
+                  <span className="round-leader-avatar">
+                    <Avatar name={e.addedBy.name} size={32} />
+                    <span className="round-leader-medal" aria-hidden="true"><Medal size={23} /></span>
+                  </span>
+                  <span>{e.track.artists} · Picked by <strong>{e.addedBy.id === userId ? "you" : e.addedBy.name}</strong></span>
+                </>
+              ) : <>{e.track.artists} · {e.addedBy.id === userId ? "you" : e.addedBy.name}</>}
             </div>
             {!!e.ratings?.length && (
               <div className="chips">
@@ -1064,7 +1087,8 @@ export function History({ items, userId, admin }: { items: PublicEntry[]; userId
             </button>
           )}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
