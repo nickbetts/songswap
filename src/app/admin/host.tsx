@@ -240,16 +240,17 @@ export function HostConsole({ admin, isHost, hostName }: { admin: boolean; isHos
           >
             {busy === "playNow" + e.id ? <Spinner size={14} /> : <PlayCircle size={18} />}
           </button>
-          {!e.handedOff && (
-            <button
+          <button
               className="icon-btn sm danger"
               title="Remove"
-              aria-label="Remove"
-              onClick={() => act("remove", { entryId: e.id })}
+              aria-label={`Remove ${e.track.name}`}
+              disabled={busy === "remove" + e.id}
+              onClick={() => act("remove", { entryId: e.id }, e.handedOff
+                ? `Remove “${e.track.name}” from this round? It was already sent to Spotify and may still play there. This does not skip Spotify playback.`
+                : undefined)}
             >
               <Trash2 size={16} />
-            </button>
-          )}
+          </button>
         </div>
       )}
       bottom={

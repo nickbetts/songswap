@@ -319,13 +319,12 @@ export async function removeEntry(entryId: string) {
     const s = await load();
     const e = s.queue.find((x) => x.id === entryId);
     if (!e) throw new GameError(404, "Not in the queue");
-    if (e.handedOffAt) {
-      throw new GameError(409, "Already sent to Spotify's queue. Skip it there or use Play now");
-    }
     s.queue = s.queue.filter((x) => x.id !== entryId);
+    s.error = null;
     applyFairOrder(s);
     await save(s);
   });
+  await forceSync();
 }
 
 /**

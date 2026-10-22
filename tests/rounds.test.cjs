@@ -141,6 +141,21 @@ test("unconfirmed playback does not restart the same requested song indefinitely
   assert.equal(state.error, null);
 });
 
+test("hosts can remove a locked-in request and clear its stale warning without sending playback commands", async () => {
+  await seed([{ ...a1, handedOffAt: Date.now() - 20000 }, b1, a2]);
+  await tick({ track: { ...a1.track, id: "unmatched-track" } });
+  assert.match((await game.publicState(null, true)).error, /not confirmed/);
+  assert.ok(await kv.get("ss:sync"));
+  await game.removeEntry("a1");
+  const state = await game.publicState(null, true);
+  assert.equal(state.error, null);
+  assert.deepEqual(state.queue.map((e) => e.id), ["b1", "a2"]);
+  assert.deepEqual(state.queue.map((e) => e.roundNumber), [1, 1]);
+  assert.equal(await kv.get("ss:sync"), null);
+  assert.deepEqual(commands, []);
+  await assert.rejects(game.removeEntry("a1"), /Not in the queue/);
+});
+
 test("another release of the same recording restores now playing and voting for legacy requests", async () => {
   await seed([{ ...a1, handedOffAt: Date.now() - 20000 }, b1]);
   const fetch = global.fetch;
