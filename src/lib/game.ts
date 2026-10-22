@@ -1,9 +1,11 @@
-import { randomInt } from "crypto";
+import { randomInt, randomUUID } from "crypto";
 import { getKV, withLock } from "./store";
 import * as sp from "./spotify";
 import type { Track } from "./spotify";
 
 const STATE_KEY = "ss:state";
+const HISTORY_KEY = "ss:history";
+const PLAYBACK_KEY = "ss:playback";
 const HANDOFF_REMAINING_MS = 25_000;
 const MAX_HISTORY = 200;
 const STALL_MS = 60_000;
@@ -25,6 +27,12 @@ export interface Entry {
   ratings: Record<string, { name: string; score: number }>;
   skipVotes?: Record<string, string>;
   skippedAt?: number;
+  roundNumber?: number;
+}
+
+interface RoundResult {
+  number: number;
+  songs: { entryId: string; person: Person; average: number | null }[];
 }
 
 interface GameState {
@@ -36,6 +44,9 @@ interface GameState {
   pausedSince?: number | null;
   adminPaused?: boolean;
   error: string | null;
+  roundNumber: number;
+  roundParticipants: string[];
+  roundResults: RoundResult[];
 }
 
 const emptyState = (): GameState => ({
@@ -45,6 +56,9 @@ const emptyState = (): GameState => ({
   playback: null,
   playbackAt: 0,
   error: null,
+  roundNumber: 1,
+  roundParticipants: [],
+  roundResults: [],
 });
 
 export class GameError extends Error {
@@ -53,12 +67,97 @@ export class GameError extends Error {
   }
 }
 
+/*
+ * Persisted as three keys so the frequent polls/syncs stay cheap on the database:
+ *  - ss:state    small core (queue, now playing, flags) + the current history version
+ *  - ss:history  the (large) played history, re-read only when its version changes
+ *  - ss:playback the Spotify player snapshot, rewritten on every sync
+ * Each key is only written when its contents actually changed.
+ */
+type CoreState = Omit<GameState, "history" | "playback" | "playbackAt" | "roundResults"> & { historyVer?: string };
+interface StoredHistory {
+  ver: string;
+  list: Entry[];
+  rounds?: RoundResult[];
+}
+interface StoredPlayback {
+  playback: sp.Playback | null;
+  playbackAt: number;
+}
+
+let historyCache: StoredHistory | null = null;
+const loaded = new WeakMap<GameState, { core: string; history: string; playback: string; historyVer?: string }>();
+
+function split(s: GameState) {
+  const { history, roundResults, playback, playbackAt, ...core } = s;
+  const p: StoredPlayback = { playback, playbackAt };
+  return { core, history: { list: history, rounds: roundResults }, playback: p };
+}
+
+async function loadHistory(ver: string | undefined): Promise<StoredHistory> {
+  if (!ver) return { ver: "", list: [], rounds: [] };
+  if (historyCache?.ver !== ver) {
+    const h = await getKV().get<StoredHistory>(HISTORY_KEY);
+    if (!h) throw new Error("Saved round history is missing");
+    historyCache = h;
+  }
+  return structuredClone(historyCache);
+}
+
 async function load(): Promise<GameState> {
-  return { ...emptyState(), ...((await getKV().get<GameState>(STATE_KEY)) ?? {}) };
+  const [stored, pb] = await Promise.all([
+    getKV().get<CoreState & Partial<GameState>>(STATE_KEY),
+    getKV().get<StoredPlayback>(PLAYBACK_KEY),
+  ]);
+  const { historyVer, history: legacyHistory, playback: legacyPb, playbackAt: legacyPbAt, ...core } = stored ?? {};
+  // Older deployments kept everything (history + playback) inside ss:state.
+  const legacy = !!legacyHistory;
+  const history = legacy ? { list: legacyHistory, rounds: [] } : await loadHistory(historyVer);
+  const s: GameState = {
+    ...emptyState(),
+    ...core,
+    history: history.list,
+    roundResults: history.rounds ?? [],
+    playback: pb ? pb.playback : legacyPb ?? null,
+    playbackAt: pb?.playbackAt ?? legacyPbAt ?? 0,
+  };
+  if (s.nowPlaying && s.nowPlaying.roundNumber === undefined) {
+    s.nowPlaying.roundNumber = s.roundNumber;
+    s.roundParticipants = [s.nowPlaying.addedBy.id];
+  }
+  applyFairOrder(s);
+  const parts = split(s);
+  loaded.set(s, {
+    core: legacy ? "" : JSON.stringify(core),
+    history: legacy ? "" : JSON.stringify(parts.history),
+    playback: pb ? JSON.stringify(parts.playback) : "",
+    historyVer: legacy ? undefined : historyVer,
+  });
+  return s;
 }
 
 async function save(s: GameState) {
-  await getKV().set(STATE_KEY, s);
+  const kv = getKV();
+  const prev = loaded.get(s);
+  const parts = split(s);
+  const core = JSON.stringify(parts.core);
+  const history = JSON.stringify(parts.history);
+  const playback = JSON.stringify(parts.playback);
+  let historyVer = prev?.historyVer;
+
+  if (history !== prev?.history || !historyVer) {
+    historyVer = randomUUID();
+    const h: StoredHistory = { ver: historyVer, ...parts.history };
+    await kv.set(HISTORY_KEY, h);
+    historyCache = structuredClone(h);
+  }
+  const writes: Promise<void>[] = [];
+  if (core !== prev?.core || historyVer !== prev?.historyVer) {
+    writes.push(kv.set(STATE_KEY, { ...parts.core, historyVer }));
+  }
+  if (playback !== prev?.playback) writes.push(kv.set(PLAYBACK_KEY, parts.playback));
+  await Promise.all(writes);
+  loaded.set(s, { core, history, playback, historyVer });
 }
 
 const forceSync = () => getKV().del("ss:sync");
@@ -102,8 +201,45 @@ export function fairOrder(queue: Entry[], current: Entry | null): Entry[] {
 }
 
 const applyFairOrder = (s: GameState) => {
-  s.queue = fairOrder(s.queue, s.nowPlaying);
+  const used = new Map<number, Set<string>>([[s.roundNumber, new Set(s.roundParticipants)]]);
+  const groups = new Map<number, Entry[]>();
+  for (const e of s.queue) {
+    let round = s.roundNumber;
+    while (used.get(round)?.has(e.addedBy.id)) round++;
+    const people = used.get(round) ?? new Set<string>();
+    people.add(e.addedBy.id);
+    used.set(round, people);
+    e.roundNumber = round;
+    const group = groups.get(round) ?? [];
+    group.push(e);
+    groups.set(round, group);
+  }
+  let previous = s.nowPlaying ?? s.history[0] ?? null;
+  s.queue = [...groups.keys()].sort((a, b) => a - b).flatMap((round) => {
+    let group = groups.get(round)!;
+    if (round > s.roundNumber || !s.roundParticipants.length) group = fairOrder(group, previous);
+    previous = group.at(-1)!;
+    return group;
+  });
 };
+
+function finishRound(s: GameState) {
+  if (s.nowPlaying || !s.roundParticipants.length || s.queue.some((e) => e.roundNumber === s.roundNumber)) return;
+  s.roundResults.push({
+    number: s.roundNumber,
+    songs: s.history.filter((e) => e.roundNumber === s.roundNumber)
+      .map((e) => ({ entryId: e.id, person: e.addedBy, average: average(e) })),
+  });
+  s.roundNumber++;
+  s.roundParticipants = [];
+  applyFairOrder(s);
+}
+
+function winners(result: RoundResult) {
+  const rated = result.songs.filter((song) => song.average !== null);
+  const best = Math.max(...rated.map((song) => song.average!));
+  return rated.filter((song) => song.average === best);
+}
 
 export async function addSong(person: Person, trackId: string) {
   if (!/^[A-Za-z0-9]{10,32}$/.test(trackId)) throw new GameError(400, "Invalid track");
@@ -212,7 +348,7 @@ export async function reorderQueue(order: unknown) {
     const key = (e: Entry, i: number) => rank.get(e.id) ?? order.length + i;
     const sorted = rest
       .map((e, i) => ({ e, k: key(e, i) }))
-      .sort((a, b) => a.k - b.k)
+      .sort((a, b) => a.e.roundNumber! - b.e.roundNumber! || a.k - b.k)
       .map((x) => x.e);
     s.queue = [...pinned, ...sorted];
     applyFairOrder(s);
@@ -248,6 +384,9 @@ export async function playNow(entryId: string) {
     const s = await load();
     const e = s.queue.find((x) => x.id === entryId);
     if (!e) throw new GameError(404, "Not in the queue");
+    if (e.roundNumber !== s.roundNumber) {
+      throw new GameError(409, "That person already has a song in this round. Play it when their next round begins");
+    }
     await sp.playTrack(e.track);
     s.adminPaused = false;
     e.handedOffAt = Date.now();
@@ -314,6 +453,9 @@ export async function deleteHistoryEntry(entryId: string) {
     const before = s.history.length;
     s.history = s.history.filter((e) => e.id !== entryId);
     if (s.history.length === before) throw new GameError(404, "Not in the played history");
+    for (const round of s.roundResults) {
+      round.songs = round.songs.filter((song) => song.entryId !== entryId);
+    }
     await save(s);
   });
 }
@@ -326,6 +468,10 @@ export async function deleteRating(entryId: string, raterId: string) {
     if (!e) throw new GameError(404, "Song not found");
     if (!Object.hasOwn(e.ratings, raterId)) throw new GameError(404, "Score not found");
     delete e.ratings[raterId];
+    for (const round of s.roundResults) {
+      const song = round.songs.find((song) => song.entryId === entryId);
+      if (song) song.average = average(e);
+    }
     await save(s);
   });
 }
@@ -352,7 +498,7 @@ export async function sync() {
       const s = await load();
       s.error = msg;
       await save(s);
-    }).catch(() => {});
+    });
     return;
   }
 
@@ -366,7 +512,7 @@ export async function sync() {
     const retire = () => {
       if (s.nowPlaying) {
         s.history.unshift(s.nowPlaying);
-        s.history = s.history.slice(0, MAX_HISTORY);
+        s.history = s.history.filter((entry, index) => index < MAX_HISTORY || entry.roundNumber === s.roundNumber);
         s.nowPlaying = null;
       }
     };
@@ -374,11 +520,14 @@ export async function sync() {
     if (pb?.trackId) {
       if (s.nowPlaying?.track.id !== pb.trackId) {
         retire();
-        const idx = s.queue.findIndex((e) => e.track.id === pb!.trackId);
+        applyFairOrder(s);
+        finishRound(s);
+        const idx = s.queue.findIndex((e) => e.track.id === pb!.trackId && e.roundNumber === s.roundNumber);
         if (idx >= 0) {
           const [e] = s.queue.splice(idx, 1);
           e.startedAt = now;
           s.nowPlaying = e;
+          s.roundParticipants.push(e.addedBy.id);
         }
       }
     } else {
@@ -386,6 +535,7 @@ export async function sync() {
     }
 
     applyFairOrder(s);
+    finishRound(s);
 
     if (pb?.isPlaying) s.pausedSince = null;
     else s.pausedSince ??= now;
@@ -409,7 +559,7 @@ export async function sync() {
           retire();
           head.handedOffAt = now;
           s.pausedSince = null;
-        } else if (!head.handedOffAt && pb?.isPlaying && pb.durationMs - pb.progressMs < HANDOFF_REMAINING_MS) {
+        } else if (head.roundNumber === s.roundNumber && !head.handedOffAt && pb?.isPlaying && pb.durationMs - pb.progressMs < HANDOFF_REMAINING_MS) {
           await sp.addToSpotifyQueue(head.track.uri);
           head.handedOffAt = now;
         }
@@ -423,7 +573,7 @@ export async function sync() {
       }
     }
     await save(s);
-  }).catch(() => {});
+  });
 }
 
 function publicEntry(e: Entry, userId: string | null, showRatings: boolean, admin = false) {
@@ -441,6 +591,7 @@ function publicEntry(e: Entry, userId: string | null, showRatings: boolean, admi
       : undefined,
     handedOff: !!e.handedOffAt,
     skipped: !!e.skippedAt,
+    roundNumber: e.roundNumber ?? null,
   };
 }
 
@@ -448,9 +599,9 @@ export async function publicState(userId: string | null, admin: boolean) {
   const [auth, s, device] = await Promise.all([sp.getAuth(), load(), admin ? sp.getChosenDevice() : null]);
   const all = [...(s.nowPlaying ? [s.nowPlaying] : []), ...s.history];
 
-  const byPerson = new Map<string, { name: string; sum: number; rated: number; songs: number }>();
+  const byPerson = new Map<string, { id: string; name: string; sum: number; rated: number; songs: number; roundPoints: number }>();
   for (const e of all) {
-    const p = byPerson.get(e.addedBy.id) ?? { name: e.addedBy.name, sum: 0, rated: 0, songs: 0 };
+    const p = byPerson.get(e.addedBy.id) ?? { ...e.addedBy, sum: 0, rated: 0, songs: 0, roundPoints: 0 };
     p.name = e.addedBy.name;
     p.songs++;
     const avg = average(e);
@@ -460,14 +611,27 @@ export async function publicState(userId: string | null, admin: boolean) {
     }
     byPerson.set(e.addedBy.id, p);
   }
+  for (const round of s.roundResults) {
+    for (const song of winners(round)) {
+      const p = byPerson.get(song.person.id) ?? { ...song.person, sum: 0, rated: 0, songs: 0, roundPoints: 0 };
+      p.roundPoints++;
+      byPerson.set(p.id, p);
+    }
+  }
   const leaderboard = [...byPerson.values()]
-    .filter((p) => p.rated > 0)
-    .map((p) => ({ name: p.name, average: p.sum / p.rated, songs: p.songs }))
-    .sort((a, b) => b.average - a.average);
+    .filter((p) => p.rated > 0 || p.roundPoints > 0)
+    .map((p) => ({ id: p.id, name: p.name, average: p.rated ? p.sum / p.rated : null, songs: p.songs, roundPoints: p.roundPoints }))
+    .sort((a, b) => b.roundPoints - a.roundPoints || (b.average ?? 0) - (a.average ?? 0) || a.name.localeCompare(b.name));
 
   const pb = s.playback;
   const np = s.nowPlaying;
   return {
+    currentRound: s.roundNumber,
+    roundResults: s.roundResults.map((round) => ({
+      number: round.number,
+      winners: winners(round).map((song) => ({ ...song.person, average: song.average! })),
+      songCount: round.songs.length,
+    })),
     connected: !!auth,
     spotifyName: admin ? (auth?.displayName ?? null) : null,
     device: admin ? { chosen: device?.name ?? null, current: s.playback?.deviceName ?? null } : null,

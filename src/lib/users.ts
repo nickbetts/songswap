@@ -33,7 +33,7 @@ interface UserRec {
   avatarVersion?: string;
 }
 
-type Users = Record<string, UserRec>;
+export type Users = Record<string, UserRec>;
 
 export interface SessionUser {
   id: string;
@@ -80,7 +80,7 @@ async function verifyPassword(pw: string, rec: UserRec) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-async function loadUsers(): Promise<Users> {
+export async function loadUsers(): Promise<Users> {
   return (await getKV().get<Users>(USERS_KEY)) ?? {};
 }
 
@@ -94,8 +94,15 @@ async function ensureSeeded() {
     if (await getKV().get(SEEDED_KEY)) return;
     type Person = { id: string; name: string };
     type E = { addedBy?: Person };
-    const state = await getKV().get<{ queue?: E[]; nowPlaying?: E | null; history?: E[] }>("ss:state");
-    const entries = [...(state?.queue ?? []), ...(state?.nowPlaying ? [state.nowPlaying] : []), ...(state?.history ?? [])];
+    const [state, history] = await Promise.all([
+      getKV().get<{ queue?: E[]; nowPlaying?: E | null; history?: E[] }>("ss:state"),
+      getKV().get<{ list?: E[] }>("ss:history"),
+    ]);
+    const entries = [
+      ...(state?.queue ?? []),
+      ...(state?.nowPlaying ? [state.nowPlaying] : []),
+      ...(state?.history ?? history?.list ?? []),
+    ];
 
     // Per name, pick the id used most often.
     const counts = new Map<string, Map<string, { name: string; n: number }>>();
@@ -166,10 +173,11 @@ export const sessionCookie = (u: UserRec) =>
     path: "/",
   }) as const;
 
-export async function currentUser(): Promise<SessionUser | null> {
+/** Pass `users` to reuse an already-loaded user list (saves a database read). */
+export async function currentUser(users?: Users): Promise<SessionUser | null> {
   const t = parseToken((await cookies()).get(USER_COOKIE)?.value);
   if (!t) return null;
-  const u = Object.values(await loadUsers()).find((x) => x.id === t.id);
+  const u = Object.values(users ?? (await loadUsers())).find((x) => x.id === t.id);
   if (!u || u.ver !== t.ver) return null;
   return {
     id: u.id, name: u.name, mustChange: u.mustChange, pending: u.approved === false,
@@ -181,10 +189,10 @@ export async function currentUser(): Promise<SessionUser | null> {
  * The current session if it belongs to the host account (and the host has set their own
  * password). Includes `ver` so host cookies die when the host changes password.
  */
-export async function currentHost(): Promise<{ id: string; ver: number } | null> {
+export async function currentHost(users?: Users): Promise<{ id: string; ver: number } | null> {
   const t = parseToken((await cookies()).get(USER_COOKIE)?.value);
   if (!t) return null;
-  const u = (await loadUsers())[nameKey(HOST_USERNAME)];
+  const u = (users ?? (await loadUsers()))[nameKey(HOST_USERNAME)];
   if (!u || u.id !== t.id || u.ver !== t.ver || u.mustChange) return null;
   return { id: u.id, ver: u.ver };
 }
@@ -322,8 +330,8 @@ export async function listUsers() {
     .sort((a, b) => Number(b.pending) - Number(a.pending) || b.createdAt - a.createdAt);
 }
 
-export async function avatarImages(): Promise<Record<string, string>> {
-  return Object.fromEntries(Object.values(await loadUsers())
+export async function avatarImages(users?: Users): Promise<Record<string, string>> {
+  return Object.fromEntries(Object.values(users ?? (await loadUsers()))
     .filter((u) => u.avatarVersion)
     .map((u) => [avatarName(u.name), avatarUrl(u.id, u.avatarVersion!)]));
 }

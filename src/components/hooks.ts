@@ -23,6 +23,7 @@ export interface PublicEntry {
   ratings?: { name: string; score: number; id?: string }[];
   handedOff: boolean;
   skipped?: boolean;
+  roundNumber: number | null;
 }
 
 export interface NowPlaying extends PublicEntry {
@@ -41,7 +42,13 @@ export interface AppState {
   nowPlaying: NowPlaying | null;
   queue: PublicEntry[];
   history: PublicEntry[];
-  leaderboard: { name: string; average: number; songs: number }[];
+  currentRound: number;
+  roundResults: {
+    number: number;
+    winners: { id: string; name: string; average: number }[];
+    songCount: number;
+  }[];
+  leaderboard: { id: string; name: string; average: number | null; songs: number; roundPoints: number }[];
   playerPaused: boolean;
   me: User | null;
   device?: { chosen: string | null; current: string | null } | null;

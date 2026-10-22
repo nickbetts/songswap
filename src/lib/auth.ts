@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { currentHost } from "./users";
+import { currentHost, type Users } from "./users";
 
 export const ADMIN_COOKIE = "ss_admin";
 
@@ -59,10 +59,10 @@ function parseAdminToken(token: string | undefined) {
 }
 
 /** Host access needs a valid host cookie AND a live login session as the host account. */
-export async function isAdmin() {
+export async function isAdmin(users?: Users) {
   const jar = await cookies();
   const t = parseAdminToken(jar.get(ADMIN_COOKIE)?.value);
   if (!t) return false;
-  const host = await currentHost();
+  const host = await currentHost(users);
   return !!host && host.id === t.id && host.ver === t.ver;
 }

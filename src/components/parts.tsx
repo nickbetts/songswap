@@ -555,6 +555,98 @@ export function RequestPanel({
 
 /* ───────────────────────────── Queue ───────────────────────────── */
 
+export function RoundPanel({
+  state,
+  receivedAt,
+  userId,
+  actions,
+  onRequest,
+  canRequest,
+  onReorder,
+  historyAdmin,
+}: {
+  state: AppState;
+  receivedAt: number;
+  userId: string;
+  actions?: (e: PublicEntry) => React.ReactNode;
+  onRequest: () => void;
+  canRequest: boolean;
+  onReorder?: (ids: string[]) => Promise<void>;
+  historyAdmin?: HistoryAdmin;
+}) {
+  const [page, setPage] = useState<number | null>(null);
+  useEffect(() => {
+    if (page === state.currentRound) setPage(null);
+  }, [page, state.currentRound]);
+  const numbers = [...new Set([
+    ...state.roundResults.map((r) => r.number),
+    state.currentRound,
+    ...state.queue.map((e) => e.roundNumber ?? state.currentRound),
+  ])].sort((a, b) => a - b);
+  const selected = page !== null && numbers.includes(page) ? page : state.currentRound;
+  const index = numbers.indexOf(selected);
+  const completed = state.roundResults.find((r) => r.number === selected);
+  const latest = state.roundResults.at(-1);
+  const queue = state.queue.filter((e) => e.roundNumber === selected);
+  const history = state.history.filter((e) => e.roundNumber === selected);
+  const current = selected === state.currentRound;
+  const resultText = (result: AppState["roundResults"][number]) =>
+    result.winners.length
+      ? `${result.winners.map((w) => w.name).join(" & ")} ${result.winners.length === 1 ? "wins" : "tie"} with ${result.winners[0].average.toFixed(2)}/10. +1 round point${result.winners.length === 1 ? "." : " each."}`
+      : "No rated songs, so no points awarded.";
+  const go = (number: number) => setPage(number === state.currentRound ? null : number);
+
+  return (
+    <div className="round-panel">
+      {latest && (
+        <div className="round-result glass" role="status" aria-live="polite">
+          <Trophy size={22} />
+          <div>
+            <strong>Round {latest.number} complete</strong>
+            <p className="sub">{resultText(latest)}</p>
+          </div>
+        </div>
+      )}
+      <section className="panel glass">
+        <header className="panel-head">
+          <div>
+            <h2>Round {selected} <span className="tag">{completed ? "Complete" : current ? "Live" : "Upcoming"}</span></h2>
+            <p className="panel-sub">One song per person. Highest average wins a round point.</p>
+          </div>
+        </header>
+        <nav className="round-pagination" aria-label="Rounds">
+          <button className="btn ghost sm" disabled={index === 0} onClick={() => go(numbers[index - 1])} aria-label="Previous round">Previous</button>
+          <span className="small">Round {selected} of {numbers.at(-1)}</span>
+          <button className="btn ghost sm" disabled={index === numbers.length - 1} onClick={() => go(numbers[index + 1])} aria-label="Next round">Next</button>
+          {!current && <button className="btn ghost sm" onClick={() => setPage(null)}>Live round</button>}
+        </nav>
+        {completed && <p className="round-summary">{resultText(completed)}</p>}
+        {current && state.nowPlaying && (
+          <div className="round-now">
+            <Art src={state.nowPlaying.track.image} size={40} />
+            <div><strong>{state.nowPlaying.track.name}</strong><p className="sub">{state.nowPlaying.addedBy.name} · Playing now</p></div>
+          </div>
+        )}
+        {!!history.length && <History items={history} userId={userId} admin={historyAdmin} />}
+        {completed && !history.length && <p className="round-summary muted">Track details are no longer in the recent played history. Round points are retained.</p>}
+      </section>
+      {!completed && (
+        <QueuePanel
+          key={selected}
+          queue={queue}
+          np={current ? state.nowPlaying : null}
+          receivedAt={receivedAt}
+          userId={userId}
+          actions={actions}
+          onRequest={onRequest}
+          canRequest={canRequest}
+          onReorder={onReorder}
+        />
+      )}
+    </div>
+  );
+}
+
 export function QueuePanel({
   queue,
   np,
@@ -637,7 +729,7 @@ export function QueuePanel({
           </span>
           <div>
             <h2>
-              Up next <span className="count">{queue.length}</span>
+              Up next this round <span className="count">{queue.length}</span>
             </h2>
             <p className="panel-sub">
               {queue.length
@@ -651,7 +743,7 @@ export function QueuePanel({
       {queue.length === 0 ? (
         <div className="empty">
           <Disc3 size={40} className="empty-icon" />
-          <p>The queue is empty.</p>
+          <p>No more songs queued for this round.</p>
           <button className="btn ghost" onClick={onRequest} disabled={!canRequest}>
             <Plus size={16} /> Add a song
           </button>
@@ -877,10 +969,10 @@ export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: s
     );
   }
   return (
-    <ol className="list board">
+    <ol className="list board" aria-label="Leaderboard ranked by round points, then average rating">
       {rows.map((r, i) => (
         <motion.li
-          key={r.name}
+          key={r.id}
           layout
           className={`brow ${i < 3 ? "top" : ""} ${me && r.name === me ? "mine" : ""}`}
           style={{ "--medal": MEDALS[i] ?? "var(--muted)" } as React.CSSProperties}
@@ -896,14 +988,15 @@ export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: s
               <motion.span
                 className="bscore-fill"
                 initial={{ width: 0 }}
-                animate={{ width: `${r.average * 10}%` }}
+                animate={{ width: `${(r.average ?? 0) * 10}%` }}
                 transition={{ type: "spring", stiffness: 60, damping: 16, delay: i * 0.05 }}
-                style={{ background: heat(r.average) }}
+                style={{ background: heat(r.average ?? 0) }}
               />
             </div>
           </div>
           <div className="bnum">
-            <strong style={{ color: heat(r.average) }}>{r.average.toFixed(2)}</strong>
+            <strong>{r.roundPoints} {r.roundPoints === 1 ? "pt" : "pts"}</strong>
+            <span className="sub" style={{ color: heat(r.average ?? 0) }}>Avg {r.average?.toFixed(2) ?? "—"}/10</span>
             <span className="sub">
               {r.songs} {r.songs === 1 ? "song" : "songs"}
             </span>

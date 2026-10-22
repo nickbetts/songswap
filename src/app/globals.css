@@ -1208,6 +1208,37 @@ button {
 }
 
 /* queue */
+.round-panel {
+  display: grid;
+  gap: 16px;
+}
+.round-result,
+.round-now,
+.round-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.round-result {
+  border-radius: var(--radius);
+  color: var(--accent);
+}
+.round-result svg {
+  flex-shrink: 0;
+}
+.round-pagination {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+}
+.round-summary {
+  padding: 0 20px 16px;
+  margin: 0;
+}
+.round-now {
+  border-top: 1px solid var(--line);
+}
 .qrow {
   display: flex;
   align-items: center;

@@ -257,11 +257,11 @@ export function HostConsole({ admin, isHost, hostName }: { admin: boolean; isHos
           <section className="danger-zone glass">
             <div>
               <div className="title">Danger zone</div>
-              <div className="sub">Clears the queue, history and every rating.</div>
+              <div className="sub">Clears the queue, rounds, winner points, history and every rating.</div>
             </div>
             <button
               className="btn ghost danger-btn"
-              onClick={() => act("reset", {}, "Clear the queue, history and all ratings?")}
+              onClick={() => act("reset", {}, "Clear the queue, rounds, winner points, history and all ratings?")}
             >
               <RotateCcw size={16} /> Reset session
             </button>
