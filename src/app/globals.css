@@ -1209,11 +1209,9 @@ button {
 
 /* queue */
 .round-panel {
-  display: grid;
-  gap: 16px;
+  overflow: hidden;
 }
 .round-result,
-.round-now,
 .round-pagination {
   display: flex;
   align-items: center;
@@ -1236,8 +1234,21 @@ button {
   padding: 0 20px 16px;
   margin: 0;
 }
-.round-now {
-  border-top: 1px solid var(--line);
+.round-playing {
+  margin-bottom: 6px;
+}
+.qrow.playing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.round-panel .played .hrow {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-2);
+  margin-bottom: 6px;
+}
+.round-panel .played .tag {
+  color: var(--muted);
 }
 .qrow {
   display: flex;
@@ -1384,6 +1395,17 @@ li.qrow {
 }
 .tab .count {
   margin-left: 0;
+}
+.leaderboard-tabs .tab {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 9px 5px;
+  font-size: 0.74rem;
+  text-align: center;
+}
+.leaderboard-tabs .tab > span:not(.tab-pill, .count) {
+  flex-basis: 100%;
 }
 
 /* leaderboard */

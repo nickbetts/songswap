@@ -10,7 +10,6 @@ import {
   Disc3,
   GripVertical,
   History as HistoryIcon,
-  ListMusic,
   Lock,
   Music2,
   Plus,
@@ -597,9 +596,9 @@ export function RoundPanel({
   const go = (number: number) => setPage(number === state.currentRound ? null : number);
 
   return (
-    <div className="round-panel">
+    <section className="panel glass round-panel">
       {latest && (
-        <div className="round-result glass" role="status" aria-live="polite">
+        <div className="round-result" role="status" aria-live="polite">
           <Trophy size={22} />
           <div>
             <strong>Round {latest.number} complete</strong>
@@ -607,7 +606,6 @@ export function RoundPanel({
           </div>
         </div>
       )}
-      <section className="panel glass">
         <header className="panel-head">
           <div>
             <h2>Round {selected} <span className="tag">{completed ? "Complete" : current ? "Live" : "Upcoming"}</span></h2>
@@ -621,16 +619,24 @@ export function RoundPanel({
           {!current && <button className="btn ghost sm" onClick={() => setPage(null)}>Live round</button>}
         </nav>
         {completed && <p className="round-summary">{resultText(completed)}</p>}
+        {!!history.length && <History items={[...history].reverse()} userId={userId} admin={historyAdmin} />}
         {current && state.nowPlaying && (
-          <div className="round-now">
-            <Art src={state.nowPlaying.track.image} size={40} />
-            <div><strong>{state.nowPlaying.track.name}</strong><p className="sub">{state.nowPlaying.addedBy.name} · Playing now</p></div>
+          <div className="list queue round-playing">
+            <div className={`qrow playing ${state.nowPlaying.addedBy.id === userId ? "mine" : ""}`}>
+              <QueueRowBody
+                e={state.nowPlaying}
+                i={history.length}
+                at={0}
+                showEta={false}
+                mine={state.nowPlaying.addedBy.id === userId}
+                playbackStatus={state.nowPlaying.isPlaying ? "playing" : "paused"}
+              />
+              <ScoreBadge value={state.nowPlaying.average} />
+            </div>
           </div>
         )}
-        {!!history.length && <History items={history} userId={userId} admin={historyAdmin} />}
         {completed && !history.length && <p className="round-summary muted">Track details are no longer in the recent played history. Round points are retained.</p>}
-      </section>
-      {!completed && (
+      {!completed && (queue.length > 0 || (!history.length && !(current && state.nowPlaying))) && (
         <QueuePanel
           key={selected}
           queue={queue}
@@ -643,7 +649,7 @@ export function RoundPanel({
           onReorder={onReorder}
         />
       )}
-    </div>
+    </section>
   );
 }
 
@@ -672,7 +678,6 @@ export function QueuePanel({
   const dragging = useRef(false);
   const latestIds = useRef<string[]>([]);
 
-  const total = queue.reduce((a, e) => a + e.track.durationMs, 0);
   let pinnedCount = 0;
   while (pinnedCount < queue.length && queue[pinnedCount].handedOff) pinnedCount++;
   const pinned = queue.slice(0, pinnedCount);
@@ -721,25 +726,7 @@ export function QueuePanel({
   );
 
   return (
-    <section className="panel glass">
-      <header className="panel-head">
-        <div className="panel-title">
-          <span className="panel-icon">
-            <ListMusic size={18} />
-          </span>
-          <div>
-            <h2>
-              Up next this round <span className="count">{queue.length}</span>
-            </h2>
-            <p className="panel-sub">
-              {queue.length
-                ? `${fmtDuration(total)} lined up · one song per person, in turns${onReorder && queue.length > 1 ? " · drag to change turn order" : ""}`
-                : "Nothing queued"}
-            </p>
-          </div>
-        </div>
-      </header>
-
+    <div className="round-queue">
       {queue.length === 0 ? (
         <div className="empty">
           <Disc3 size={40} className="empty-icon" />
@@ -800,7 +787,7 @@ export function QueuePanel({
           </AnimatePresence>
         </ol>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -856,6 +843,7 @@ function QueueRowBody({
   mine,
   handle,
   actions,
+  playbackStatus,
 }: {
   e: PublicEntry;
   i: number;
@@ -864,11 +852,14 @@ function QueueRowBody({
   mine: boolean;
   handle?: React.ReactNode;
   actions?: (e: PublicEntry) => React.ReactNode;
+  playbackStatus?: "playing" | "paused";
 }) {
   return (
     <>
       {handle}
-      <span className="qpos">{i + 1}</span>
+      <span className="qpos">
+        {playbackStatus === "playing" ? <Equalizer playing /> : playbackStatus === "paused" ? <Disc3 size={18} /> : i + 1}
+      </span>
       <Art src={e.track.image} size={44} />
       <div className="grow">
         <div className="title">
@@ -881,7 +872,9 @@ function QueueRowBody({
             <Avatar name={e.addedBy.name} size={16} />
             {mine ? "You" : e.addedBy.name}
           </span>
-          {e.handedOff ? <span className="tag next">Locked in</span> : i === 0 ? <span className="tag next">Next</span> : null}
+          {playbackStatus
+            ? <span className="tag next">{playbackStatus === "playing" ? "Playing" : "Paused"}</span>
+            : e.handedOff ? <span className="tag next">Locked in</span> : i === 0 ? <span className="tag next">Next</span> : null}
           {showEta && (
             <span className="eta">
               <Clock size={11} /> {at < 60000 ? "soon" : `~${fmtDuration(at)}`}
@@ -914,13 +907,14 @@ export function SidePanel({
   userName: string | null;
   historyAdmin?: HistoryAdmin;
 }) {
-  const [tab, setTab] = useState<"board" | "played">("board");
+  const [tab, setTab] = useState<"rating" | "points" | "played">("rating");
   return (
     <section className="panel glass">
-      <div className="tabs" role="tablist">
+      <div className="tabs leaderboard-tabs" role="tablist" aria-label="Room rankings and played songs">
         {(
           [
-            ["board", "Leaderboard", Trophy, leaderboard.length],
+            ["rating", "Rating Leaderboard", Sparkles, leaderboard.filter((r) => r.average !== null).length],
+            ["points", "Point Leaderboard", Trophy, leaderboard.length],
             ["played", "Played", HistoryIcon, history.length],
           ] as const
         ).map(([key, label, Icon, n]) => (
@@ -941,13 +935,13 @@ export function SidePanel({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={tab}
-          initial={{ opacity: 0, x: tab === "board" ? -16 : 16 }}
+          initial={{ opacity: 0, x: tab === "rating" ? -16 : 16 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: tab === "board" ? 16 : -16 }}
+          exit={{ opacity: 0, x: tab === "rating" ? 16 : -16 }}
           transition={{ duration: 0.18 }}
         >
-          {tab === "board" ? (
-            <Leaderboard rows={leaderboard} me={userName} />
+          {tab !== "played" ? (
+            <Leaderboard rows={leaderboard} me={userName} mode={tab} />
           ) : (
             <History items={history} userId={userId} admin={historyAdmin} />
           )}
@@ -959,8 +953,12 @@ export function SidePanel({
 
 const MEDALS = ["#ffd54a", "#cfd8dc", "#e0a06a"];
 
-export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: string | null }) {
-  if (!rows.length) {
+export function Leaderboard({ rows, me, mode }: { rows: AppState["leaderboard"]; me: string | null; mode: "rating" | "points" }) {
+  const ranked = rows.filter((r) => mode === "points" || r.average !== null).sort((a, b) =>
+    (mode === "rating"
+      ? (b.average ?? 0) - (a.average ?? 0) || b.roundPoints - a.roundPoints
+      : b.roundPoints - a.roundPoints || (b.average ?? 0) - (a.average ?? 0)) || a.name.localeCompare(b.name));
+  if (!ranked.length) {
     return (
       <div className="empty">
         <Trophy size={40} className="empty-icon" />
@@ -969,8 +967,8 @@ export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: s
     );
   }
   return (
-    <ol className="list board" aria-label="Leaderboard ranked by round points, then average rating">
-      {rows.map((r, i) => (
+    <ol className="list board" aria-label={mode === "rating" ? "Rating Leaderboard" : "Point Leaderboard"}>
+      {ranked.map((r, i) => (
         <motion.li
           key={r.id}
           layout
@@ -995,8 +993,17 @@ export function Leaderboard({ rows, me }: { rows: AppState["leaderboard"]; me: s
             </div>
           </div>
           <div className="bnum">
-            <strong>{r.roundPoints} {r.roundPoints === 1 ? "pt" : "pts"}</strong>
-            <span className="sub" style={{ color: heat(r.average ?? 0) }}>Avg {r.average?.toFixed(2) ?? "—"}/10</span>
+            {mode === "rating" ? (
+              <>
+                <strong style={{ color: heat(r.average ?? 0) }}>{r.average?.toFixed(2) ?? "—"}/10</strong>
+                <span className="sub">{r.roundPoints} round {r.roundPoints === 1 ? "point" : "points"}</span>
+              </>
+            ) : (
+              <>
+                <strong>{r.roundPoints} {r.roundPoints === 1 ? "pt" : "pts"}</strong>
+                <span className="sub">Avg {r.average?.toFixed(2) ?? "—"}/10</span>
+              </>
+            )}
             <span className="sub">
               {r.songs} {r.songs === 1 ? "song" : "songs"}
             </span>
@@ -1024,6 +1031,7 @@ export function History({ items, userId, admin }: { items: PublicEntry[]; userId
           <div className="grow">
             <div className="title">
               {e.track.name}
+              <span className="tag">Played</span>
               {e.skipped && <span className="tag skipped">Skipped</span>}
             </div>
             <div className="sub">
