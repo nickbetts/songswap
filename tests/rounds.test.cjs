@@ -101,6 +101,46 @@ test("one song per person per round; late new people join the last playing song'
   assert.equal(state.nowPlaying.id, "a2");
 });
 
+test("Spotify relinked playback is recognised and can be rated without restarting it", async () => {
+  await seed([a1, b1]);
+  playback = {
+    is_playing: true, progress_ms: 5000,
+    item: { id: "substituted-track", linked_from: { id: a1.track.id }, duration_ms: 200000 },
+    device: { id: "desktop", name: "Desktop" },
+  };
+  await kv.del("ss:sync");
+  await game.sync();
+  let state = await game.publicState("voter", true);
+  assert.equal(state.nowPlaying.id, "a1");
+  assert.equal(state.nowPlaying.canRate, true);
+  await game.rateSong(person("voter"), "a1", 8);
+  playback.progress_ms = 10000;
+  await kv.del("ss:sync");
+  await game.sync();
+  state = await game.publicState("voter", true);
+  assert.equal(state.nowPlaying.id, "a1");
+  assert.equal(state.nowPlaying.myScore, 8);
+  assert.equal(state.history.length, 0);
+  assert.deepEqual(commands, []);
+});
+
+test("unconfirmed playback does not restart the same requested song indefinitely", async () => {
+  await seed([{ ...a1, handedOffAt: Date.now() - 20000 }]);
+  let state = await tick({ track: { ...a1.track, id: "unmatched-track" } });
+  assert.equal(state.nowPlaying, null);
+  assert.match(state.error, /Reported track: unmatched-track/);
+  assert.match(state.error, /automatic retries are stopped/i);
+  assert.deepEqual(commands, []);
+  state = await tick(null);
+  assert.match(state.error, /not reporting playback/);
+  assert.deepEqual(commands, []);
+  await game.playNow("a1");
+  assert.equal(commands.length, 1);
+  state = await tick(a1);
+  assert.equal(state.nowPlaying.id, "a1");
+  assert.equal(state.error, null);
+});
+
 test("ties award one point each, repeat polls do not award twice, and host edits recalculate", async () => {
   await seed([a1, b1, a2]);
   await tick(a1);

@@ -517,12 +517,14 @@ export async function sync() {
       }
     };
 
-    if (pb?.trackId) {
-      if (s.nowPlaying?.track.id !== pb.trackId) {
+    const matchesPlayback = (entry: Entry) =>
+      entry.track.id === pb?.trackId || (!!pb?.linkedFromId && entry.track.id === pb.linkedFromId);
+    if (pb?.trackId || pb?.linkedFromId) {
+      if (!s.nowPlaying || !matchesPlayback(s.nowPlaying)) {
         retire();
         applyFairOrder(s);
         finishRound(s);
-        const idx = s.queue.findIndex((e) => e.track.id === pb!.trackId && e.roundNumber === s.roundNumber);
+        const idx = s.queue.findIndex((e) => matchesPlayback(e) && e.roundNumber === s.roundNumber);
         if (idx >= 0) {
           const [e] = s.queue.splice(idx, 1);
           e.startedAt = now;
@@ -554,7 +556,11 @@ export async function sync() {
         !s.adminPaused && ((foreign && !headPending) || (!!s.nowPlaying && !pb?.isPlaying && (ended || stalled)));
 
       try {
-        if (takeover) {
+        if (foreign && head.handedOffAt && !headPending) {
+          s.error = pb
+            ? `Spotify has not confirmed the requested song. Reported track: ${pb.trackId ?? "unknown"}${pb.linkedFromId ? ` (linked from ${pb.linkedFromId})` : ""}. Expected: ${head.track.id}. Use Play now to retry; automatic retries are stopped to avoid restarting playback.`
+            : "Spotify accepted the song request but is not reporting playback. Check the selected device and Private Session, then use Play now to retry. Automatic retries are stopped to avoid restarting playback.";
+        } else if (takeover) {
           await sp.playTrack(head.track);
           retire();
           head.handedOffAt = now;

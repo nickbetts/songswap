@@ -43,6 +43,7 @@ Open <http://127.0.0.1:3000>. (Spotify only allows `http` redirect URIs for loop
 
 ## Notes
 
+- Spotify playback recognition accepts Spotify's relinked track IDs. If Spotify accepts a song request but never confirms that track, automatic retries stop instead of repeatedly restarting it; the room displays a diagnostic warning and the host can retry with **Play now** after checking the device.
 - Guests have accounts (unique, case-insensitive usernames; scrypt-hashed passwords; signed httpOnly session cookie). The server derives who you are from the session, never from the request body. Failed logins are rate-limited.
 - Anyone who requested songs before accounts existed gets an account under that name with the temporary password `i3media`, and must change it on first login.
 - Spotify has no API to remove items from its queue, so a song is only sent to Spotify near the end of the previous track. Once sent, use Skip/Play now rather than Remove.

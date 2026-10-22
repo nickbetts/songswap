@@ -31,6 +31,7 @@ export interface Playback {
   isPlaying: boolean;
   progressMs: number;
   trackId: string | null;
+  linkedFromId?: string | null;
   durationMs: number;
   deviceId?: string | null;
   deviceName?: string | null;
@@ -183,6 +184,7 @@ export async function getPlayback(): Promise<Playback | null> {
     isPlaying: !!j.is_playing,
     progressMs: j.progress_ms ?? 0,
     trackId: j.item.id ?? null,
+    linkedFromId: j.item.linked_from?.id ?? null,
     durationMs: j.item.duration_ms ?? 0,
     deviceId: j.device?.id ?? null,
     deviceName: j.device?.name ?? null,
