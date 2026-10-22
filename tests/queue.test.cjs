@@ -80,25 +80,19 @@ async function tick(e, progress = 100) {
   return game.publicState(null, true);
 }
 
-test("one song per person per round; late new people join the last playing song's round", async () => {
+test("one continuous smart queue rotates people and accepts late requests", async () => {
   await seed([a1, a2, b1, b2]);
   let state = await tick(a1);
-  assert.deepEqual(state.queue.map((e) => [e.id, e.roundNumber]), [["b1", 1], ["a2", 2], ["b2", 2]]);
+  assert.deepEqual(state.queue.map((e) => e.id), ["b1", "a2", "b2"]);
   state = await tick(b1);
-  assert.equal(state.currentRound, 1);
+  assert.deepEqual(state.queue.map((e) => e.id), ["a2", "b2"]);
   await game.addSong(person("c"), "c10000000000");
   await game.addSong(person("a"), "a30000000000");
   state = await game.publicState(null, true);
-  assert.equal(state.queue[0].addedBy.id, "c");
-  assert.equal(state.queue[0].roundNumber, 1);
-  assert.equal(state.queue.find((e) => e.track.id === "a30000000000").roundNumber, 3);
-  await assert.rejects(game.playNow("a2"), /already has a song in this round/);
-  const c = { track: state.queue[0].track };
-  await tick(c);
-  state = await tick(a2);
-  assert.equal(state.currentRound, 2);
-  assert.equal(state.roundResults[0].songCount, 3);
-  assert.equal(state.nowPlaying.id, "a2");
+  assert.deepEqual(state.queue.map((e) => e.addedBy.id), ["a", "c", "b", "a"]);
+  assert.ok(!("currentRound" in state));
+  assert.ok(!("roundResults" in state));
+  assert.ok(state.queue.every((e) => !("roundNumber" in e)));
 });
 
 test("Spotify relinked playback is recognised and can be rated without restarting it", async () => {
@@ -150,7 +144,6 @@ test("hosts can remove a locked-in request and clear its stale warning without s
   const state = await game.publicState(null, true);
   assert.equal(state.error, null);
   assert.deepEqual(state.queue.map((e) => e.id), ["b1", "a2"]);
-  assert.deepEqual(state.queue.map((e) => e.roundNumber), [1, 1]);
   assert.equal(await kv.get("ss:sync"), null);
   assert.deepEqual(commands, []);
   await assert.rejects(game.removeEntry("a1"), /Not in the queue/);
@@ -200,64 +193,59 @@ test("a different recording is not credited to the requested song", async () => 
   assert.deepEqual(commands, []);
 });
 
-test("ties award one point each, repeat polls do not award twice, and host edits recalculate", async () => {
+test("leaderboard uses average ratings only and host edits recalculate", async () => {
   await seed([a1, b1, a2]);
   await tick(a1);
   await game.rateSong(person("voter"), "a1", 8);
   await tick(b1);
   await game.rateSong(person("voter"), "b1", 8);
   let state = await tick(a2);
-  assert.equal(state.currentRound, 2);
-  assert.deepEqual(state.roundResults[0].winners.map((w) => w.id).sort(), ["a", "b"]);
-  assert.deepEqual(state.leaderboard.map((r) => r.roundPoints), [1, 1]);
+  assert.deepEqual(state.leaderboard.map((r) => [r.id, r.average]), [["a", 8], ["b", 8]]);
+  assert.ok(state.leaderboard.every((r) => !("roundPoints" in r)));
   await tick(a2);
   state = await game.publicState(null, true);
-  assert.equal(state.roundResults.length, 1);
-  assert.deepEqual(state.leaderboard.map((r) => r.roundPoints), [1, 1]);
+  assert.deepEqual(state.leaderboard.map((r) => [r.id, r.average]), [["a", 8], ["b", 8]]);
   await game.deleteRating("a1", "voter");
   state = await game.publicState(null, true);
-  assert.deepEqual(state.roundResults[0].winners.map((w) => w.id), ["b"]);
-  assert.equal(state.leaderboard.find((r) => r.id === "b").roundPoints, 1);
+  assert.deepEqual(state.leaderboard.map((r) => [r.id, r.average]), [["b", 8]]);
   await game.deleteHistoryEntry("b1");
   state = await game.publicState(null, true);
-  assert.deepEqual(state.roundResults[0].winners, []);
-  assert.ok(state.leaderboard.every((r) => r.roundPoints === 0));
-});
-
-test("unrated rounds end without a winner even when the queue becomes empty; reset clears points", async () => {
-  await seed([a1]);
-  await tick(a1);
-  let state = await tick(null);
-  assert.equal(state.currentRound, 2);
-  assert.deepEqual(state.roundResults, [{ number: 1, winners: [], songCount: 1 }]);
-  await tick(null);
-  state = await game.publicState(null, true);
-  assert.equal(state.roundResults.length, 1);
-  await game.resetAll();
-  state = await game.publicState(null, true);
-  assert.equal(state.currentRound, 1);
-  assert.deepEqual(state.roundResults, []);
   assert.deepEqual(state.leaderboard, []);
 });
 
-test("the final song is not pre-queued into the next round, leaving room for new participants", async () => {
+test("unrated songs stay out of the leaderboard and reset clears the session", async () => {
+  await seed([a1]);
+  await tick(a1);
+  let state = await tick(null);
+  assert.deepEqual(state.history.map((e) => e.id), ["a1"]);
+  assert.deepEqual(state.leaderboard, []);
+  await tick(null);
+  state = await game.publicState(null, true);
+  assert.equal(state.history.length, 1);
+  await game.resetAll();
+  state = await game.publicState(null, true);
+  assert.deepEqual(state.history, []);
+  assert.deepEqual(state.queue, []);
+  assert.deepEqual(state.leaderboard, []);
+});
+
+test("the next song is handed to Spotify without waiting for a round boundary", async () => {
   await seed([a1, a2]);
   await tick(a1, 190000);
-  assert.ok(!commands.includes("/v1/me/player/queue"));
+  assert.equal(commands.filter((path) => path === "/v1/me/player/queue").length, 1);
   await game.addSong(person("b"), "b10000000000");
   await tick(a1, 195000);
   assert.equal(commands.filter((path) => path === "/v1/me/player/queue").length, 1);
   const state = await game.publicState(null, true);
-  assert.equal(state.queue[0].roundNumber, 1);
+  assert.equal(state.queue[0].id, "a2");
   assert.equal(state.queue[0].handedOff, true);
 });
 
-test("reordering a future round does not pull its songs into the live round", async () => {
+test("host reordering works across the entire queue while retaining smart rotation", async () => {
   await seed([a1, b1, entry("c1", "c"), a2, b2, entry("c2", "c")]);
   await game.reorderQueue(["b2", "a2"]);
   const state = await game.publicState(null, true);
-  assert.deepEqual(state.queue.slice(0, 3).map((e) => e.id), ["a1", "b1", "c1"]);
-  assert.deepEqual(state.queue.slice(3).map((e) => e.id), ["b2", "a2", "c2"]);
+  assert.deepEqual(state.queue.map((e) => e.id), ["b2", "a2", "c1", "b1", "a1", "c2"]);
 });
 
 test("database write errors during sync surface instead of silently leaving stale playback", async () => {
@@ -274,7 +262,7 @@ test("database write errors during sync surface instead of silently leaving stal
   }
 });
 
-test("winner points survive the 200-song history cap and a fresh server module", async () => {
+test("ratings survive the 200-song history cap and a fresh server module", async () => {
   const songs = Array.from({ length: 202 }, (_, i) => entry(`song${i}`, "a"));
   await seed(songs);
   for (const song of songs) {
@@ -283,8 +271,8 @@ test("winner points survive the 200-song history cap and a fresh server module",
   }
   let state = await tick(null);
   assert.equal(state.history.length, 200);
-  assert.equal(state.roundResults.length, 202);
-  assert.equal(state.leaderboard[0].roundPoints, 202);
+  assert.equal(state.leaderboard[0].average, 9);
+  assert.equal(state.leaderboard[0].songs, 200);
 
   const path = require.resolve("../src/lib/game.ts");
   const cached = require.cache[path];
@@ -293,27 +281,26 @@ test("winner points survive the 200-song history cap and a fresh server module",
   try {
     const freshGame = require(path);
     state = await freshGame.publicState(null, true);
-    assert.equal(state.currentRound, 203);
-    assert.equal(state.roundResults.length, 202);
-    assert.equal(state.leaderboard[0].roundPoints, 202);
+    assert.equal(state.history.length, 200);
+    assert.equal(state.leaderboard[0].average, 9);
+    assert.equal(state.leaderboard[0].songs, 200);
   } finally {
     require.cache[path] = cached;
     delete require.extensions[".ts"];
   }
 });
 
-test("removing the last unplayed entry completes the round without losing played ratings", async () => {
+test("removing a queued entry does not lose played ratings", async () => {
   await seed([a1, b1, a2]);
   await tick(a1);
   await game.rateSong(person("voter"), "a1", 7);
   await game.removeEntry("b1");
   const state = await tick(a2);
-  assert.equal(state.currentRound, 2);
-  assert.equal(state.roundResults[0].songCount, 1);
-  assert.deepEqual(state.roundResults[0].winners.map((w) => w.id), ["a"]);
+  assert.deepEqual(state.history.map((e) => [e.id, e.average]), [["a1", 7]]);
+  assert.equal(state.leaderboard[0].average, 7);
 });
 
-test("a skipped song keeps its score for the round winner", async () => {
+test("a skipped song keeps its score in history and the rating leaderboard", async () => {
   await seed([a1, b1]);
   await tick(a1);
   await game.rateSong(person("voter"), "a1", 9);
@@ -321,6 +308,39 @@ test("a skipped song keeps its score for the round winner", async () => {
   await tick(b1);
   await game.rateSong(person("voter"), "b1", 6);
   const state = await tick(null);
-  assert.deepEqual(state.roundResults[0].winners.map((w) => w.id), ["a"]);
+  assert.deepEqual(state.leaderboard.map((e) => [e.id, e.average]), [["a", 9], ["b", 6]]);
   assert.equal(state.history.find((e) => e.id === "a1").skipped, true);
+});
+
+test("Play now can choose any song, including another pick by the current person", async () => {
+  await seed([a1, b1, a2]);
+  await tick(a1);
+  await game.playNow("a2");
+  assert.deepEqual(commands, ["/v1/me/player/play"]);
+  const state = await tick(a2);
+  assert.equal(state.nowPlaying.id, "a2");
+  assert.deepEqual(state.queue.map((e) => e.id), ["b1"]);
+});
+
+test("smart rotation pins handed-off songs and preserves each person's pick order", () => {
+  const pinned = { ...a1, handedOffAt: 1 };
+  assert.deepEqual(game.fairOrder([pinned, a2, b1, b2], null).map((e) => e.id), ["a1", "b1", "a2", "b2"]);
+  assert.deepEqual(game.fairOrder([a1, a2, b1, b2], a1).map((e) => e.id), ["b1", "a1", "b2", "a2"]);
+});
+
+test("guests receive every queued song and played history newest first, not highest rated", async () => {
+  const songs = Array.from({ length: 75 }, (_, i) => entry(`queued${i}`, i % 2 ? "a" : "b"));
+  await seed(songs);
+  let state = await game.publicState("guest", false);
+  assert.equal(state.queue.length, 75);
+  assert.deepEqual(new Set(state.queue.map((e) => e.id)), new Set(songs.map((e) => e.id)));
+
+  await seed([a1, b1, a2]);
+  await tick(a1);
+  await game.rateSong(person("voter"), "a1", 10);
+  await tick(b1);
+  await game.rateSong(person("voter"), "b1", 3);
+  await tick(a2);
+  state = await game.publicState("guest", false);
+  assert.deepEqual(state.history.map((e) => [e.id, e.average]), [["b1", 3], ["a1", 10]]);
 });

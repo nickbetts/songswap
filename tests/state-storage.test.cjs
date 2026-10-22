@@ -94,3 +94,35 @@ test("a sync with only playback progress changes writes just ss:playback", async
   assert.equal(s.playerPaused, false);
   assert.deepEqual(s.history.map((e) => e.id), ["b"]);
 });
+
+test("existing round state becomes one smart playlist without losing requests or ratings", async () => {
+  const a = { ...entry("queued-a"), addedBy: { id: "ann", name: "Ann" }, ratings: {}, roundNumber: 3 };
+  const b = { ...entry("queued-b"), addedBy: { id: "bob", name: "Bob" }, ratings: {}, roundNumber: 4 };
+  const played = { ...entry("played"), roundNumber: 2 };
+  const current = { ...entry("current"), addedBy: { id: "ann", name: "Ann" }, roundNumber: 3 };
+  await kv.set("ss:history", {
+    ver: "before-round-rollback",
+    list: [played],
+    rounds: [{ number: 2, songs: [{ entryId: played.id, person: played.addedBy, average: 8 }] }],
+  });
+  await kv.set("ss:state", {
+    queue: [a, b], nowPlaying: current, historyVer: "before-round-rollback", error: null,
+    roundNumber: 3, roundParticipants: ["ann"],
+  });
+  let state = await game.publicState(null, true);
+  assert.deepEqual(state.queue.map((e) => e.id), ["queued-b", "queued-a"]);
+  assert.equal(state.nowPlaying.id, "current");
+  assert.deepEqual(state.history.map((e) => [e.id, e.average]), [["played", 8]]);
+  assert.ok(!("currentRound" in state));
+  assert.ok(!("roundResults" in state));
+  assert.ok(state.leaderboard.every((e) => !("roundPoints" in e)));
+  await game.deleteRating("played", "u2");
+  state = await game.publicState(null, true);
+  assert.equal(state.history[0].average, null);
+  assert.equal(state.nowPlaying.average, 8);
+  assert.equal(state.queue.length, 2);
+  const core = await kv.get("ss:state");
+  assert.ok(!("roundNumber" in core));
+  assert.ok(!("roundParticipants" in core));
+  assert.equal((await kv.get("ss:history")).rounds, undefined);
+});

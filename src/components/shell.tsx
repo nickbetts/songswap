@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { AlertTriangle, Disc3, Expand, Minimize2, Plus, Radio, Sparkles } from "lucide-react";
 import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./hooks";
-import { HistoryAdmin, NowPlayingHero, RoundPanel, RequestPanel, Sheet, SidePanel } from "./parts";
+import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
 import { Avatar, AvatarImages, Backdrop, Kbd } from "./ui";
 import { NextTrack, RoomIntro } from "./listening-room";
 import dynamic from "next/dynamic";
@@ -245,16 +245,16 @@ export function Dashboard({
             </div>
           )}
           <div className="col-queue">
-            {state && <RoundPanel
-              state={state}
+            <QueuePanel
+              queue={queue}
+              np={np}
               receivedAt={receivedAt}
               userId={user.id}
               actions={queueActions}
               onRequest={openRequest}
               canRequest={canRequest}
               onReorder={onReorder}
-              historyAdmin={historyAdmin}
-            />}
+            />
           </div>
           <div className="col-side">
             <SidePanel
