@@ -262,17 +262,24 @@ test("database write errors during sync surface instead of silently leaving stal
   }
 });
 
-test("ratings survive the 200-song history cap and a fresh server module", async () => {
-  const songs = Array.from({ length: 202 }, (_, i) => entry(`song${i}`, "a"));
+test("all songs and ratings survive beyond 200 plays and a fresh server module for guests and hosts", async () => {
+  const songs = Array.from({ length: 251 }, (_, i) => entry(`song${i}`, i === 0 ? "oldest" : "a"));
   await seed(songs);
   for (const song of songs) {
     await tick(song);
-    await game.rateSong(person("voter"), song.id, 9);
+    await game.rateSong(person("voter"), song.id, song === songs[0] ? 10 : 9);
   }
   let state = await tick(null);
-  assert.equal(state.history.length, 200);
-  assert.equal(state.leaderboard[0].average, 9);
-  assert.equal(state.leaderboard[0].songs, 200);
+  const verifyHistory = (state) => {
+    assert.equal(state.history.length, 251);
+    assert.equal(state.history[0].id, "song250");
+    assert.equal(state.history.at(-1).id, "song0");
+    assert.deepEqual(state.history.at(-1).ratings.map((r) => [r.name, r.score]), [["VOTER", 10]]);
+    assert.deepEqual(state.leaderboard.map((p) => [p.id, p.average, p.songs]), [["oldest", 10, 1], ["a", 9, 250]]);
+    assert.deepEqual(state.stats, { songsPlayed: 251, totalDurationMs: 251 * 200000, ratingsCast: 251 });
+  };
+  verifyHistory(state);
+  verifyHistory(await game.publicState("guest", false));
 
   const path = require.resolve("../src/lib/game.ts");
   const cached = require.cache[path];
@@ -281,13 +288,37 @@ test("ratings survive the 200-song history cap and a fresh server module", async
   try {
     const freshGame = require(path);
     state = await freshGame.publicState(null, true);
-    assert.equal(state.history.length, 200);
-    assert.equal(state.leaderboard[0].average, 9);
-    assert.equal(state.leaderboard[0].songs, 200);
+    verifyHistory(state);
+    verifyHistory(await freshGame.publicState("guest", false));
+    await freshGame.deleteRating("song0", "voter");
+    state = await freshGame.publicState(null, true);
+    assert.equal(state.stats.ratingsCast, 250);
+    assert.equal(state.history.at(-1).average, null);
+    await freshGame.deleteHistoryEntry("song0");
+    state = await freshGame.publicState(null, true);
+    assert.deepEqual(state.stats, { songsPlayed: 250, totalDurationMs: 250 * 200000, ratingsCast: 250 });
+    assert.deepEqual(state.leaderboard.map((p) => p.id), ["a"]);
   } finally {
     require.cache[path] = cached;
     delete require.extensions[".ts"];
   }
+});
+
+test("session stats count played history only and reset explicitly clears history and totals", async () => {
+  await seed([a1, b1, a2]);
+  let state = await tick(a1);
+  assert.deepEqual(state.stats, { songsPlayed: 0, totalDurationMs: 0, ratingsCast: 0 });
+  await game.rateSong(person("voter"), "a1", 8);
+  state = await tick(b1);
+  assert.deepEqual(state.stats, { songsPlayed: 1, totalDurationMs: 200000, ratingsCast: 1 });
+  await tick(b1);
+  state = await game.publicState("guest", false);
+  assert.equal(state.stats.songsPlayed, 1);
+  await game.resetAll();
+  state = await game.publicState(null, true);
+  assert.deepEqual(state.stats, { songsPlayed: 0, totalDurationMs: 0, ratingsCast: 0 });
+  assert.deepEqual(state.history, []);
+  assert.deepEqual(state.leaderboard, []);
 });
 
 test("removing a queued entry does not lose played ratings", async () => {

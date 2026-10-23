@@ -1,8 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion, useSpring } from "motion/react";
-import { ArrowUpRight, Disc3, MoveUpRight } from "lucide-react";
-import { PublicEntry, fmtDuration } from "./hooks";
+import { ArrowUpRight, Clock, Disc3, MoveUpRight, Star } from "lucide-react";
+import { AppState, PublicEntry, fmtDuration } from "./hooks";
 import { Art, Avatar } from "./ui";
 
 /** Decorative, not an audio analyser: Spotify doesn't expose the playing audio. */
@@ -99,9 +99,34 @@ export function RoomIntro({ queue, played }: { queue: PublicEntry[]; played: num
       <div className="room-stats">
         <div><strong>{String(queue.length).padStart(2, "0")}</strong><span>in the queue</span></div>
         <div><strong>{queue.length ? fmtDuration(duration) : "—"}</strong><span>still to come</span></div>
-        <div><strong>{String(played).padStart(2, "0")}</strong><span>recent plays</span></div>
+        <div><strong>{String(played).padStart(2, "0")}</strong><span>songs played</span></div>
       </div>
     </div>
+  );
+}
+
+export function PlaybackStats({ stats }: { stats: AppState["stats"] | undefined }) {
+  const minutes = stats ? Math.floor(stats.totalDurationMs / 60000) : 0;
+  const hours = Math.floor(minutes / 60);
+  const duration = hours ? `${hours.toLocaleString()}h ${minutes % 60}m` : `${minutes}m`;
+  return (
+    <dl className="playback-stats" aria-label="Session statistics">
+      <div>
+        <Disc3 size={20} aria-hidden="true" />
+        <dt>Songs played</dt>
+        <dd>{stats ? stats.songsPlayed.toLocaleString() : "—"}</dd>
+      </div>
+      <div title="Combined full duration of played tracks, including skipped songs; not an exact listening-time measurement.">
+        <Clock size={20} aria-hidden="true" />
+        <dt>Total track time</dt>
+        <dd>{stats ? duration : "—"}</dd>
+      </div>
+      <div>
+        <Star size={20} aria-hidden="true" />
+        <dt>Ratings cast</dt>
+        <dd>{stats ? stats.ratingsCast.toLocaleString() : "—"}</dd>
+      </div>
+    </dl>
   );
 }
 

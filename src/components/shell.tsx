@@ -6,7 +6,7 @@ import { AlertTriangle, Disc3, Expand, Minimize2, Plus, Radio, Sparkles } from "
 import { AppState, PublicEntry, User, useAccentColor, useMediaQuery } from "./hooks";
 import { HistoryAdmin, NowPlayingHero, QueuePanel, RequestPanel, Sheet, SidePanel } from "./parts";
 import { Avatar, AvatarImages, Backdrop, Kbd } from "./ui";
-import { NextTrack, RoomIntro } from "./listening-room";
+import { NextTrack, PlaybackStats, RoomIntro } from "./listening-room";
 import dynamic from "next/dynamic";
 import { RoomModes } from "./room-modes";
 
@@ -211,7 +211,7 @@ export function Dashboard({
             <h1>NO BAD VIBES.<br /><span>JUST BIG DROPS.</span></h1>
             <div className="front-row-meta"><span>SS / MAIN STAGE</span><span>{queue.length} TRACKS IN THE PIPELINE</span><span>YOU ARE FRONT ROW</span></div>
           </section>
-        ) : <RoomIntro queue={queue} played={state?.history.length ?? 0} />}
+        ) : <RoomIntro queue={queue} played={state?.stats.songsPlayed ?? 0} />}
 
         <div className="room-toolbar">
           <span className="room-channel"><span /> {rave ? "FULL SEND / MAIN STAGE" : "THE LISTENING ROOM"} <span className="room-channel-line" /></span>
@@ -224,6 +224,8 @@ export function Dashboard({
             </button>
           </div>
         </div>
+
+        <PlaybackStats stats={state?.stats} />
 
         <NowPlayingHero
           np={np}

@@ -7,7 +7,6 @@ const STATE_KEY = "ss:state";
 const HISTORY_KEY = "ss:history";
 const PLAYBACK_KEY = "ss:playback";
 const HANDOFF_REMAINING_MS = 25_000;
-const MAX_HISTORY = 200;
 const STALL_MS = 60_000;
 const TAKEOVER_GRACE_MS = 15_000;
 export const SKIP_VOTES_NEEDED = 5;
@@ -454,7 +453,6 @@ export async function sync() {
     const retire = () => {
       if (s.nowPlaying) {
         s.history.unshift(s.nowPlaying);
-        s.history = s.history.slice(0, MAX_HISTORY);
         s.nowPlaying = null;
       }
     };
@@ -596,7 +594,12 @@ export async function publicState(userId: string | null, admin: boolean) {
         }
       : null,
     queue: s.queue.map((e) => publicEntry(e, userId, false)),
-    history: s.history.slice(0, admin ? MAX_HISTORY : 50).map((e) => publicEntry(e, userId, true, admin)),
+    history: s.history.map((e) => publicEntry(e, userId, true, admin)),
+    stats: {
+      songsPlayed: s.history.length,
+      totalDurationMs: s.history.reduce((sum, e) => sum + e.track.durationMs, 0),
+      ratingsCast: s.history.reduce((sum, e) => sum + Object.keys(e.ratings).length, 0),
+    },
     leaderboard,
     playerPaused: !!pb && !pb.isPlaying,
   };

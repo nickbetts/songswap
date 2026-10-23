@@ -41,6 +41,11 @@ export interface AppState {
   nowPlaying: NowPlaying | null;
   queue: PublicEntry[];
   history: PublicEntry[];
+  stats: {
+    songsPlayed: number;
+    totalDurationMs: number;
+    ratingsCast: number;
+  };
   leaderboard: { id: string; name: string; average: number; songs: number }[];
   playerPaused: boolean;
   me: User | null;

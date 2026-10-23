@@ -37,6 +37,7 @@ function load(filename) {
 }
 
 const { History, QueuePanel, SidePanel, Leaderboard, NowPlayingHero } = load(path.resolve(__dirname, "../src/components/parts.tsx"));
+const { PlaybackStats } = load(path.resolve(__dirname, "../src/components/listening-room.tsx"));
 const entry = (id, average, roundNumber = 1) => ({
   id,
   track: { name: `Track-${id}`, artists: "Artist", image: null, durationMs: 200000 },
@@ -103,4 +104,23 @@ test("the Picked by avatar stays 72px", () => {
     receivedAt: Date.now(), user: null, onChange() {}, onRequest() {}, effects: false,
   }));
   assert.match(html, /class="picked-by"><span class="avatar " style="width:72px;height:72px/);
+});
+
+test("session stats show complete counts and track time beyond 24 hours", () => {
+  const html = renderToStaticMarkup(React.createElement(PlaybackStats, {
+    stats: { songsPlayed: 501, totalDurationMs: (29 * 60 + 7) * 60000, ratingsCast: 987 },
+  }));
+  assert.match(html, /Songs played/);
+  assert.match(html, /501/);
+  assert.match(html, /Total track time/);
+  assert.match(html, /29h 7m/);
+  assert.match(html, /Ratings cast/);
+  assert.match(html, /987/);
+  assert.match(html, /including skipped songs/);
+  const empty = renderToStaticMarkup(React.createElement(PlaybackStats, {
+    stats: { songsPlayed: 0, totalDurationMs: 0, ratingsCast: 0 },
+  }));
+  assert.match(empty, /0m/);
+  const loading = renderToStaticMarkup(React.createElement(PlaybackStats, {}));
+  assert.doesNotMatch(loading, /NaN|undefined/);
 });
